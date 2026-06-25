@@ -1,0 +1,140 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, Btn } from "./ui";
+import { PILLARS, CHANNELS } from "@/lib/constants";
+
+const STEPS = ["Profile", "Inputs", "7 Pillars", "Outputs", "Cadence"];
+
+export default function Wizard() {
+  const r = useRouter();
+  const [step, setStep] = useState(0);
+  const [cfg, setCfg] = useState<any>({ pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/brand").then((x) => x.json()).then((d) => {
+      if (d.brand) setCfg({
+        name: d.brand.name, handle: d.brand.handle, tagline: d.brand.tagline, region: d.brand.region, voice: d.brand.voice,
+        pillars: d.brand.pillars || {}, channels: d.brand.channels || {}, inputs: d.brand.inputs || {}, cadence: d.brand.cadence || "steady",
+      });
+      setLoaded(true);
+    });
+  }, []);
+
+  const u = (patch: any) => setCfg({ ...cfg, ...patch });
+  const save = (extra: any = {}) => fetch("/api/brand", { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
+
+  const next = async () => {
+    await save();
+    if (step < STEPS.length - 1) setStep(step + 1);
+    else { await save({ onboarded: true }); await fetch("/api/schedule", { method: "POST" }); r.push("/dashboard"); }
+  };
+
+  if (!loaded) return <div className="p-10 text-zinc-500">Loading…</div>;
+
+  return (
+    <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="flex items-center gap-2 mb-8">
+        {STEPS.map((s, i) => (
+          <div key={s} className="flex-1">
+            <div className={`h-1.5 rounded-full ${i <= step ? "bg-accent" : "bg-zinc-800"}`} />
+            <div className={`text-xs mt-2 ${i <= step ? "text-zinc-200" : "text-zinc-600"}`}>{s}</div>
+          </div>
+        ))}
+      </div>
+
+      {step === 0 && (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Brand profile</h3>
+          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this.</p>
+          <div className="grid sm:grid-cols-2 gap-3 mt-5">
+            {[["name", "Brand name"], ["handle", "Handle (@brand)"], ["tagline", "Tagline"], ["region", "Region"]].map(([k, ph]) => (
+              <input key={k} placeholder={ph} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg[k] || ""} onChange={(e) => u({ [k]: e.target.value })} />
+            ))}
+            <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
+          </div>
+        </Card>
+      )}
+
+      {step === 1 && (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Connect inputs</h3>
+          <p className="text-zinc-400 text-sm mt-1">Your cornerstone assets — one weekly input fuels everything.</p>
+          <div className="grid sm:grid-cols-2 gap-4 mt-5">
+            <button onClick={() => u({ inputs: { ...cfg.inputs, drive: true } })} className={`text-left p-5 rounded-xl border ${cfg.inputs?.drive ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+              <div className="font-bold">{cfg.inputs?.drive ? "✓ Google Drive connected" : "Connect Google Drive"}</div>
+              <div className="text-zinc-400 text-sm mt-1">Sync a folder of brand assets.</div>
+            </button>
+            <label className="text-left p-5 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/40 cursor-pointer">
+              <div className="font-bold">Drag &amp; drop upload</div>
+              <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop photos, video, logos, product PNGs"}</div>
+              <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
+            </label>
+          </div>
+        </Card>
+      )}
+
+      {step === 2 && (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Set your 7 pillars</h3>
+          <p className="text-zinc-400 text-sm mt-1">Toggle which pillars run and how often. This is your content model.</p>
+          <div className="space-y-2 mt-5">
+            {PILLARS.map((p) => {
+              const on = cfg.pillars?.[p.id]?.on ?? true;
+              const freq = cfg.pillars?.[p.id]?.freq ?? "weekly";
+              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, ...patch } } });
+              return (
+                <div key={p.id} className={`flex items-center gap-4 p-3 rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
+                  <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
+                  <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
+                  <select value={freq} onChange={(e) => setP({ freq: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                    <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {step === 3 && (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Connect outputs</h3>
+          <p className="text-zinc-400 text-sm mt-1">Where Uzi ships. (Live publishing is wired in Phase 3.)</p>
+          <div className="grid sm:grid-cols-3 gap-3 mt-5">
+            {CHANNELS.map((c) => {
+              const on = cfg.channels?.[c.id];
+              return (
+                <button key={c.id} onClick={() => u({ channels: { ...cfg.channels, [c.id]: !on } })} className={`p-4 rounded-xl border text-left ${on ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+                  <div className="text-xl text-accent">{c.glyph}</div>
+                  <div className="font-semibold text-sm mt-1">{c.name}</div>
+                  <div className="text-xs text-zinc-500">{on ? "Connected" : "Connect"}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {step === 4 && (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Cadence</h3>
+          <p className="text-zinc-400 text-sm mt-1">How aggressively should the machine fire?</p>
+          <div className="grid sm:grid-cols-3 gap-3 mt-5">
+            {[["chill", "Chill", "3× / week"], ["steady", "Steady", "Daily"], ["machinegun", "Machine gun", "Multi-daily"]].map(([id, t, d]) => (
+              <button key={id} onClick={() => u({ cadence: id })} className={`p-5 rounded-xl border text-left ${cfg.cadence === id ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+                <div className="font-bold">{t}</div><div className="text-zinc-400 text-sm">{d}</div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <div className="flex justify-between mt-6">
+        <Btn kind="ghost" onClick={() => setStep(Math.max(0, step - 1))} style={{ visibility: step === 0 ? "hidden" : "visible" }}>Back</Btn>
+        <Btn onClick={next}>{step < STEPS.length - 1 ? "Continue" : "Build my calendar →"}</Btn>
+      </div>
+    </div>
+  );
+}
