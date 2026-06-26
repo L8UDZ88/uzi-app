@@ -37,6 +37,7 @@ export const PILLARS = PILLARS_PHYSICAL;
 
 export const CHANNELS = [
   { id: "linkedin", name: "LinkedIn", glyph: "in" },
+  { id: "x", name: "X", glyph: "𝕏" },
   { id: "youtube", name: "YouTube", glyph: "▶" },
   { id: "instagram", name: "Instagram", glyph: "◎" },
   { id: "facebook", name: "Facebook", glyph: "f" },

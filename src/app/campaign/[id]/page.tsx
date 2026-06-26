@@ -17,7 +17,7 @@ export default async function CampaignPage({ params }: { params: { id: string } 
     date: s.date.toISOString().slice(0, 10),
     day: s.date.toLocaleDateString(undefined, { weekday: "short" }),
     pillar: s.pillar, channel: s.channel,
-    glyph: ({ LinkedIn: "in", YouTube: "▶", Instagram: "◎", Facebook: "f", TikTok: "♪", Podcast: "🎙" } as any)[s.channel] || "·",
+    glyph: ({ LinkedIn: "in", X: "𝕏", YouTube: "▶", Instagram: "◎", Facebook: "f", TikTok: "♪", Podcast: "🎙" } as any)[s.channel] || "·",
     status: s.status,
   }));
   return <Dashboard campaign={campaign} campaignId={campaign.id} slots={slots} />;

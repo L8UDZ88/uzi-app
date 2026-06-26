@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
+import PostPreview from "./PostPreview";
 import { pillarsFor, CHANNELS } from "@/lib/constants";
 
 type Slot = { id: string; date: string; day: string; pillar: string; channel: string; glyph: string; status: string };
@@ -117,18 +118,21 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             {draftLoading && <div className="text-zinc-500 mt-8">Drafting…</div>}
             {draft && (
               <div className="mt-5 space-y-4">
-                <Card className="p-4"><div className="text-xs text-zinc-500 mb-1">Headline</div><div className="font-semibold">{draft.headline}</div></Card>
-                <Card className="p-4">
-                  <div className="text-xs text-zinc-500 mb-1">Caption ({open.channel || "post"})</div>
-                  <div className="text-sm whitespace-pre-wrap text-zinc-100">{draft.caption}</div>
-                  <div className="text-accent text-sm mt-2">{draft.hashtags.join(" ")}</div>
-                </Card>
-                <Card className="p-4"><div className="text-xs text-zinc-500 mb-1">Visual brief</div><div className="text-sm text-zinc-300">{draft.visualBrief}</div></Card>
-                <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
+                <div className="text-xs text-zinc-500">Preview · how it'll post</div>
+                <PostPreview channel={open.channel || "Instagram"} draft={draft} handle={campaign.handle} />
+                <details className="text-sm">
+                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
+                  <div className="mt-3 space-y-3">
+                    <Card className="p-3"><div className="text-xs text-zinc-500 mb-1">Headline</div><div className="font-semibold text-zinc-100">{draft.headline}</div></Card>
+                    <Card className="p-3"><div className="text-xs text-zinc-500 mb-1">Visual brief</div><div className="text-sm text-zinc-300">{draft.visualBrief}</div></Card>
+                    <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
+                  </div>
+                </details>
                 <div className="flex gap-2 pt-2">
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
                   <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
                 </div>
+                <div className="text-xs text-zinc-600">The image is a placeholder until the image generator is wired — caption &amp; layout are real.</div>
               </div>
             )}
           </div>

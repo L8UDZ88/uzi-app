@@ -143,6 +143,9 @@ export function generateDraft(pillar: string, channel: string, b: Brand): Draft 
     caption = `Show note: ${c.caption}`;
     visualBrief = "Audiogram / waveform clip for social; full episode to RSS.";
     tagCount = 3;
+  } else if (ch === "X") {
+    caption = c.caption; // keep it tight — X rewards brevity, ≤280 chars
+    tagCount = 2;
   }
 
   return {
