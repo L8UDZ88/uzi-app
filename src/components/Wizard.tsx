@@ -2,36 +2,39 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { PILLARS, CHANNELS } from "@/lib/constants";
+import { pillarsFor, CHANNELS, CAMPAIGN_TYPES } from "@/lib/constants";
 
-const STEPS = ["Profile", "Inputs", "7 Pillars", "Outputs", "Cadence"];
+const STEPS = ["Type", "Profile", "Inputs", "7 Pillars", "Outputs", "Cadence"];
 
-export default function Wizard() {
+export default function Wizard({ campaignId }: { campaignId: string }) {
   const r = useRouter();
   const [step, setStep] = useState(0);
-  const [cfg, setCfg] = useState<any>({ pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
+  const [cfg, setCfg] = useState<any>({ campaignType: "physical", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch("/api/brand").then((x) => x.json()).then((d) => {
-      if (d.brand) setCfg({
-        name: d.brand.name, handle: d.brand.handle, tagline: d.brand.tagline, region: d.brand.region, voice: d.brand.voice,
-        pillars: d.brand.pillars || {}, channels: d.brand.channels || {}, inputs: d.brand.inputs || {}, cadence: d.brand.cadence || "steady",
+    fetch(`/api/campaigns/${campaignId}`).then((x) => x.json()).then((d) => {
+      const c = d.campaign;
+      if (c) setCfg({
+        campaignType: c.campaignType || "physical",
+        name: c.name, handle: c.handle, tagline: c.tagline, region: c.region, voice: c.voice,
+        pillars: c.pillars || {}, channels: c.channels || {}, inputs: c.inputs || {}, cadence: c.cadence || "steady",
       });
       setLoaded(true);
     });
-  }, []);
+  }, [campaignId]);
 
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
-  const save = (extra: any = {}) => fetch("/api/brand", { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
-
+  const save = (extra: any = {}) => fetch(`/api/campaigns/${campaignId}`, { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
   const next = async () => {
     await save();
     if (step < STEPS.length - 1) setStep(step + 1);
-    else { await save({ onboarded: true }); await fetch("/api/schedule", { method: "POST" }); r.push("/dashboard"); }
+    else { await save({ onboarded: true }); await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }); r.push(`/campaign/${campaignId}`); }
   };
 
   if (!loaded) return <div className="p-10 text-zinc-500">Loading…</div>;
+  const PILLARS = pillarsFor(cfg.campaignType);
+  const isDigital = cfg.campaignType === "digital";
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
@@ -46,39 +49,56 @@ export default function Wizard() {
 
       {step === 0 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Brand profile</h3>
-          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this.</p>
-          <div className="grid sm:grid-cols-2 gap-3 mt-5">
-            {[["name", "Brand name"], ["handle", "Handle (@brand)"], ["tagline", "Tagline"], ["region", "Region"]].map(([k, ph]) => (
-              <input key={k} placeholder={ph} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg[k] || ""} onChange={(e) => u({ [k]: e.target.value })} />
+          <h3 className="text-xl font-bold">New campaign — what are you launching?</h3>
+          <p className="text-zinc-400 text-sm mt-1">This sets your 7-pillar map. You can run different types for different brands.</p>
+          <div className="grid sm:grid-cols-2 gap-4 mt-5">
+            {CAMPAIGN_TYPES.map((t) => (
+              <button key={t.id} onClick={() => u({ campaignType: t.id, pillars: {} })}
+                className={`text-left p-5 rounded-xl border ${cfg.campaignType === t.id ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+                <div className="font-bold">{t.name}</div>
+                <div className="text-zinc-400 text-sm mt-1">{t.blurb}</div>
+              </button>
             ))}
-            <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
           </div>
         </Card>
       )}
 
       {step === 1 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Connect inputs</h3>
-          <p className="text-zinc-400 text-sm mt-1">Your cornerstone assets — one weekly input fuels everything.</p>
-          <div className="grid sm:grid-cols-2 gap-4 mt-5">
-            <button onClick={() => u({ inputs: { ...cfg.inputs, drive: true } })} className={`text-left p-5 rounded-xl border ${cfg.inputs?.drive ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-              <div className="font-bold">{cfg.inputs?.drive ? "✓ Google Drive connected" : "Connect Google Drive"}</div>
-              <div className="text-zinc-400 text-sm mt-1">Sync a folder of brand assets.</div>
-            </button>
-            <label className="text-left p-5 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/40 cursor-pointer">
-              <div className="font-bold">Drag &amp; drop upload</div>
-              <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop photos, video, logos, product PNGs"}</div>
-              <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
-            </label>
+          <h3 className="text-xl font-bold">Brand profile</h3>
+          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this.</p>
+          <div className="grid sm:grid-cols-2 gap-3 mt-5">
+            <input placeholder="Brand name" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.name || ""} onChange={(e) => u({ name: e.target.value })} />
+            <input placeholder="Handle (@brand)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.handle || ""} onChange={(e) => u({ handle: e.target.value })} />
+            <input placeholder="Tagline" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.tagline || ""} onChange={(e) => u({ tagline: e.target.value })} />
+            <input placeholder={isDigital ? "Category / ICP (e.g. B2B SaaS, ops teams)" : "Region (e.g. Sicily)"} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.region || ""} onChange={(e) => u({ region: e.target.value })} />
+            <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
           </div>
         </Card>
       )}
 
       {step === 2 && (
         <Card className="p-7">
+          <h3 className="text-xl font-bold">Connect inputs</h3>
+          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
+          <div className="grid sm:grid-cols-2 gap-4 mt-5">
+            <button onClick={() => u({ inputs: { ...cfg.inputs, drive: true } })} className={`text-left p-5 rounded-xl border ${cfg.inputs?.drive ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+              <div className="font-bold">{cfg.inputs?.drive ? "✓ Google Drive connected" : "Connect Google Drive"}</div>
+              <div className="text-zinc-400 text-sm mt-1">Sync a folder of brand assets &amp; copy.</div>
+            </button>
+            <label className="text-left p-5 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/40 cursor-pointer">
+              <div className="font-bold">Drag &amp; drop upload</div>
+              <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop docs, screenshots, logos, copy"}</div>
+              <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
+            </label>
+          </div>
+        </Card>
+      )}
+
+      {step === 3 && (
+        <Card className="p-7">
           <h3 className="text-xl font-bold">Set your 7 pillars</h3>
-          <p className="text-zinc-400 text-sm mt-1">Toggle which pillars run and how often. This is your content model.</p>
+          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle which pillars run and how often.</p>
           <div className="space-y-2 mt-5">
             {PILLARS.map((p) => {
               const on = cfg.pillars?.[p.id]?.on ?? true;
@@ -98,7 +118,7 @@ export default function Wizard() {
         </Card>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Connect outputs</h3>
           <p className="text-zinc-400 text-sm mt-1">Where Uzi ships. (Live publishing is wired in Phase 3.)</p>
@@ -117,7 +137,7 @@ export default function Wizard() {
         </Card>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Cadence</h3>
           <p className="text-zinc-400 text-sm mt-1">How aggressively should the machine fire?</p>

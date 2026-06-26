@@ -1,2 +1,2 @@
-import Wizard from "@/components/Wizard";
-export default function OnboardingPage() { return <Wizard />; }
+import { redirect } from "next/navigation";
+export default function OnboardingPage() { redirect("/dashboard"); }

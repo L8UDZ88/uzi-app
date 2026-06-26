@@ -2,12 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
-import { PILLARS, CHANNELS } from "@/lib/constants";
+import { pillarsFor, CHANNELS } from "@/lib/constants";
 
 type Slot = { id: string; date: string; day: string; pillar: string; channel: string; glyph: string; status: string };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
-export default function Dashboard({ brand, slots: initial }: { brand: any; slots: Slot[] }) {
+export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
   const r = useRouter();
   const [tab, setTab] = useState("calendar");
   const [slots, setSlots] = useState<Slot[]>(initial);
@@ -16,12 +16,13 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
 
-  const pillars = PILLARS.filter((p) => brand.pillars?.[p.id]?.on ?? true);
-  const chans = CHANNELS.filter((c) => brand.channels?.[c.id]);
+  const PILLARS = pillarsFor(campaign.campaignType);
+  const pillars = PILLARS.filter((p) => campaign.pillars?.[p.id]?.on ?? true);
+  const chans = CHANNELS.filter((c) => campaign.channels?.[c.id]);
 
   const regen = async () => {
     setBusy(true);
-    const res = await fetch("/api/schedule", { method: "POST" });
+    const res = await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" });
     const d = await res.json();
     setSlots((d.slots || []).map((s: any, i: number) => ({ ...s, id: initial[i]?.id || String(i), status: "queued" })));
     setBusy(false);
@@ -30,7 +31,7 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
 
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true);
-    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ pillar: s.pillar, channel: s.channel }) });
+    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel }) });
     const d = await res.json();
     setDraft(d.draft); setDraftLoading(false);
   };
@@ -44,10 +45,14 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
   return (
     <div>
       <nav className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-        <Logo />
+        <div className="flex items-center gap-4">
+          <Logo />
+          <button onClick={() => r.push("/dashboard")} className="text-sm text-zinc-400 hover:text-zinc-200">← Campaigns</button>
+        </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-400">{brand.name || "Your brand"}</span>
-          <Btn kind="ghost" onClick={() => r.push("/onboarding")}>Edit setup</Btn>
+          <span className="text-sm text-zinc-300 font-semibold">{campaign.name || "Your campaign"}</span>
+          <span className="text-xs bg-zinc-800 text-zinc-300 rounded-full px-2.5 py-1 capitalize">{campaign.campaignType}</span>
+          <Btn kind="ghost" onClick={() => r.push(`/campaign/${campaignId}/setup`)}>Edit setup</Btn>
           <Btn kind="soft" onClick={logout}>Log out</Btn>
         </div>
       </nav>
@@ -55,7 +60,7 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
           <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}/7</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Channels</div><div className="text-3xl font-black">{chans.length}</div></Card>
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{brand.cadence}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{campaign.cadence}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
@@ -89,17 +94,16 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
         )}
         {tab === "pillars" && (
           <div className="grid sm:grid-cols-2 gap-3">{pillars.map((p) => (
-            <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{brand.pillars?.[p.id]?.freq || "weekly"}</div></Card>
+            <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{campaign.pillars?.[p.id]?.freq || "weekly"}</div></Card>
           ))}</div>
         )}
         {tab === "channels" && (
           <div className="grid sm:grid-cols-3 gap-3">{CHANNELS.map((c) => (
-            <Card key={c.id} className="p-4 flex items-center gap-3"><span className="text-xl text-accent">{c.glyph}</span><div><div className="font-semibold text-sm">{c.name}</div><div className="text-xs text-zinc-500">{brand.channels?.[c.id] ? "Connected" : "Not connected"}</div></div></Card>
+            <Card key={c.id} className="p-4 flex items-center gap-3"><span className="text-xl text-accent">{c.glyph}</span><div><div className="font-semibold text-sm">{c.name}</div><div className="text-xs text-zinc-500">{campaign.channels?.[c.id] ? "Connected" : "Not connected"}</div></div></Card>
           ))}</div>
         )}
       </div>
 
-      {/* Draft panel */}
       {open && (
         <div className="fixed inset-0 bg-black/60 flex justify-end z-50" onClick={() => setOpen(null)}>
           <div className="bg-zinc-950 border-l border-zinc-800 w-full max-w-lg h-full overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
@@ -110,29 +114,21 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
               </div>
               <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
             </div>
-
             {draftLoading && <div className="text-zinc-500 mt-8">Drafting…</div>}
             {draft && (
               <div className="mt-5 space-y-4">
-                <Card className="p-4">
-                  <div className="text-xs text-zinc-500 mb-1">Headline</div>
-                  <div className="font-semibold">{draft.headline}</div>
-                </Card>
+                <Card className="p-4"><div className="text-xs text-zinc-500 mb-1">Headline</div><div className="font-semibold">{draft.headline}</div></Card>
                 <Card className="p-4">
                   <div className="text-xs text-zinc-500 mb-1">Caption ({open.channel || "post"})</div>
                   <div className="text-sm whitespace-pre-wrap text-zinc-100">{draft.caption}</div>
                   <div className="text-accent text-sm mt-2">{draft.hashtags.join(" ")}</div>
                 </Card>
-                <Card className="p-4">
-                  <div className="text-xs text-zinc-500 mb-1">Visual brief</div>
-                  <div className="text-sm text-zinc-300">{draft.visualBrief}</div>
-                </Card>
+                <Card className="p-4"><div className="text-xs text-zinc-500 mb-1">Visual brief</div><div className="text-sm text-zinc-300">{draft.visualBrief}</div></Card>
                 <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
                 <div className="flex gap-2 pt-2">
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
                   <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
                 </div>
-                <div className="text-xs text-zinc-600">Approving marks it ready. Phase 3 will publish approved posts automatically.</div>
               </div>
             )}
           </div>

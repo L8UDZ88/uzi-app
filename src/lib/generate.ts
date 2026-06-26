@@ -61,6 +61,49 @@ function pillarCopy(pillar: string, b: Brand): Copy {
       brief: "Corona-style ambient film: environment first, product as portal, golden hour, the signature ritual, real-product reveal, end-frame logo + tagline.",
       cta: "Find your moment →", tags: [slug(brand), "findyour" + slug(region), "ambient"],
     },
+    // ---- Digital campaign pillars ----
+    "Product in Action": {
+      headline: `See ${brand} do the work`,
+      caption: `Here's ${brand} actually working. ${tag} Watch it handle the thing you'd rather not.`,
+      brief: "Screen recording / UI walkthrough: show the product solving the core job in 1–2 steps.",
+      cta: "Try it yourself →", tags: [slug(brand), "producttour", "demo", "saas"],
+    },
+    "Problem → Outcome": {
+      headline: "Before vs after",
+      caption: `The painful way vs the ${brand} way. ${tag} Skip the busywork, keep the result.`,
+      brief: "Two-state visual: the messy 'before' → the clean 'after' the product delivers.",
+      cta: "Get the after →", tags: [slug(brand), "beforeandafter", "workflow"],
+    },
+    "Now Shipping": {
+      headline: `New in ${brand}`,
+      caption: `Just shipped: a new way to ${tag || "move faster"}. Live now in ${brand}.`,
+      brief: "Release visual: feature name + one-line benefit, clean UI snippet.",
+      cta: "See what's new →", tags: [slug(brand), "shipping", "changelog", "newfeature"],
+    },
+    "Proof & Results": {
+      headline: "Receipts",
+      caption: `Real results from real teams using ${brand}. The numbers do the talking.`,
+      brief: "Testimonial card or metric graphic: a customer quote or a hard outcome.",
+      cta: "See the results →", tags: [slug(brand), "casestudy", "results", "proof"],
+    },
+    "Deal Desk (Authority/POV)": {
+      headline: "Hot take",
+      caption: `Most ${region || "teams"} get this wrong. Here's the framework that fixes it.`,
+      brief: "Talking-head or carousel: a contrarian POV or named framework, founder/expert voice.",
+      cta: "Read the framework →", tags: [slug(brand), "framework", "pov", "founder"],
+    },
+    "Start Here": {
+      headline: `Start with ${brand}`,
+      caption: `Two minutes to your first win. Free to start — ${tag || "no card required"}.`,
+      brief: "CTA graphic: a clear 'start free / book a demo' with the one-step promise.",
+      cta: "Start free →", tags: [slug(brand), "starthere", "freetrial", "getstarted"],
+    },
+    "Vision / Brand Film": {
+      headline: "Why we built this",
+      caption: `The future we're building with ${brand}. ${tag}`,
+      brief: "Brand/vision film: the mission, the change you're making, hero product moments.",
+      cta: "Join us →", tags: [slug(brand), "vision", "mission", "buildinpublic"],
+    },
   };
   return map[pillar] || {
     headline: brand, caption: `${brand}. ${tag}`, brief: "On-brand visual.", cta: "Learn more →", tags: [slug(brand)],

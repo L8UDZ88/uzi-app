@@ -14,14 +14,15 @@ model User {
   email        String   @unique
   name         String?
   passwordHash String
-  brand        Brand?
+  brands       Brand[]
   createdAt    DateTime @default(now())
 }
 
 model Brand {
   id        String   @id @default(cuid())
-  userId    String   @unique
+  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignType String @default("physical") // "physical" | "digital"
   name      String   @default("")
   handle    String   @default("")
   tagline   String   @default("")

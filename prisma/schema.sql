@@ -11,7 +11,8 @@ CREATE TABLE "User" (
 
 CREATE TABLE "Brand" (
   "id" TEXT PRIMARY KEY,
-  "userId" TEXT NOT NULL UNIQUE REFERENCES "User"("id") ON DELETE CASCADE,
+  "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+  "campaignType" TEXT NOT NULL DEFAULT 'physical',
   "name" TEXT NOT NULL DEFAULT '',
   "handle" TEXT NOT NULL DEFAULT '',
   "tagline" TEXT NOT NULL DEFAULT '',
