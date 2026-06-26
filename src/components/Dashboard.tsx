@@ -4,13 +4,17 @@ import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import { PILLARS, CHANNELS } from "@/lib/constants";
 
-type Slot = { date: string; day: string; pillar: string; channel: string; glyph: string; status: string };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; glyph: string; status: string };
+type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function Dashboard({ brand, slots: initial }: { brand: any; slots: Slot[] }) {
   const r = useRouter();
   const [tab, setTab] = useState("calendar");
   const [slots, setSlots] = useState<Slot[]>(initial);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<Slot | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
 
   const pillars = PILLARS.filter((p) => brand.pillars?.[p.id]?.on ?? true);
   const chans = CHANNELS.filter((c) => brand.channels?.[c.id]);
@@ -19,10 +23,23 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
     setBusy(true);
     const res = await fetch("/api/schedule", { method: "POST" });
     const d = await res.json();
-    setSlots((d.slots || []).map((s: any) => ({ ...s, status: "queued" })));
+    setSlots((d.slots || []).map((s: any, i: number) => ({ ...s, id: initial[i]?.id || String(i), status: "queued" })));
     setBusy(false);
   };
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
+
+  const openSlot = async (s: Slot) => {
+    setOpen(s); setDraft(null); setDraftLoading(true);
+    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ pillar: s.pillar, channel: s.channel }) });
+    const d = await res.json();
+    setDraft(d.draft); setDraftLoading(false);
+  };
+  const approve = async () => {
+    if (!open) return;
+    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved" }) });
+    setSlots(slots.map((s) => (s.id === open.id ? { ...s, status: "approved" } : s)));
+    setOpen(null);
+  };
 
   return (
     <div>
@@ -39,7 +56,7 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
           <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}/7</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Channels</div><div className="text-3xl font-black">{chans.length}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{brand.cadence}</div></Card>
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Scheduled (28d)</div><div className="text-3xl font-black">{slots.length}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
           {["calendar", "pillars", "channels"].map((t) => (
@@ -50,21 +67,21 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
         {tab === "calendar" && (
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3 px-2">
-              <div className="font-bold">Auto-built calendar · next 28 days</div>
+              <div className="font-bold">Auto-built calendar · click any post to draft it</div>
               <div className="flex gap-2">
                 <Btn kind="ghost" className="text-xs px-3 py-1.5" disabled={busy} onClick={regen}>{busy ? "Rebuilding…" : "Rebuild"}</Btn>
-                <Btn className="text-xs px-3 py-1.5" onClick={() => alert("Phase 3: triggers generation + publishing to your connected channels.")}>Auto-deliver ▶</Btn>
+                <Btn className="text-xs px-3 py-1.5" onClick={() => alert("Phase 3: publishes approved posts to your connected channels on schedule.")}>Auto-deliver ▶</Btn>
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
-              {slots.map((e, i) => (
-                <div key={i} className="flex items-center gap-3 py-2.5 px-2 text-sm">
+              {slots.map((e) => (
+                <button key={e.id} onClick={() => openSlot(e)} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm text-left hover:bg-zinc-800/50 rounded-lg transition">
                   <div className="w-20 text-zinc-500">{e.day} {e.date.slice(5)}</div>
                   <div className="w-8 text-center text-accent">{e.glyph}</div>
                   <div className="w-24 text-zinc-300">{e.channel}</div>
                   <div className="flex-1 text-zinc-100">{e.pillar}</div>
-                  <span className="text-xs bg-zinc-800 rounded-full px-2 py-0.5 text-zinc-400">{e.status}</span>
-                </div>
+                  <span className={`text-xs rounded-full px-2 py-0.5 ${e.status === "approved" ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{e.status}</span>
+                </button>
               ))}
               {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
             </div>
@@ -81,6 +98,46 @@ export default function Dashboard({ brand, slots: initial }: { brand: any; slots
           ))}</div>
         )}
       </div>
+
+      {/* Draft panel */}
+      {open && (
+        <div className="fixed inset-0 bg-black/60 flex justify-end z-50" onClick={() => setOpen(null)}>
+          <div className="bg-zinc-950 border-l border-zinc-800 w-full max-w-lg h-full overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}</div>
+                <div className="font-bold text-lg">{open.pillar}</div>
+              </div>
+              <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
+            </div>
+
+            {draftLoading && <div className="text-zinc-500 mt-8">Drafting…</div>}
+            {draft && (
+              <div className="mt-5 space-y-4">
+                <Card className="p-4">
+                  <div className="text-xs text-zinc-500 mb-1">Headline</div>
+                  <div className="font-semibold">{draft.headline}</div>
+                </Card>
+                <Card className="p-4">
+                  <div className="text-xs text-zinc-500 mb-1">Caption ({open.channel || "post"})</div>
+                  <div className="text-sm whitespace-pre-wrap text-zinc-100">{draft.caption}</div>
+                  <div className="text-accent text-sm mt-2">{draft.hashtags.join(" ")}</div>
+                </Card>
+                <Card className="p-4">
+                  <div className="text-xs text-zinc-500 mb-1">Visual brief</div>
+                  <div className="text-sm text-zinc-300">{draft.visualBrief}</div>
+                </Card>
+                <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
+                <div className="flex gap-2 pt-2">
+                  <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
+                  <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
+                </div>
+                <div className="text-xs text-zinc-600">Approving marks it ready. Phase 3 will publish approved posts automatically.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

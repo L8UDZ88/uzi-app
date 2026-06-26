@@ -27,6 +27,7 @@ model Brand {
   tagline   String   @default("")
   region    String   @default("")
   voice     String   @default("")
+  // The brand config seam — pillars, channels, inputs, cadence live here as JSON.
   pillars   Json     @default("{}")
   channels  Json     @default("{}")
   inputs    Json     @default("{}")

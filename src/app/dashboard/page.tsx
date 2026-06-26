@@ -13,6 +13,7 @@ export default async function DashboardPage() {
   if (!brand) redirect("/login");
   if (!brand.onboarded) redirect("/onboarding");
   const slots = brand.schedule.map((s) => ({
+    id: s.id,
     date: s.date.toISOString().slice(0, 10),
     day: s.date.toLocaleDateString(undefined, { weekday: "short" }),
     pillar: s.pillar, channel: s.channel,
