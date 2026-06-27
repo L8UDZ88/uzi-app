@@ -110,7 +110,7 @@ export default function PostPreview({
       {textFirst ? (
         <>
           <div className="px-3 pb-3 text-sm whitespace-pre-wrap text-zinc-900">{draft.caption}{draft.hashtags.length > 0 && <span className="text-sky-600"> {draft.hashtags.join(" ")}</span>}</div>
-          {(isCarousel || asp === "wide" || channel === "YouTube") && Media}
+          {Media}
         </>
       ) : (
         <>
