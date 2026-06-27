@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { pillarsFor, CHANNELS, CAMPAIGN_TYPES } from "@/lib/constants";
+import { pillarsFor, CHANNELS, CHANNEL_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
 
 const STEPS = ["Type", "Profile", "Inputs", "7 Pillars", "Outputs", "Cadence"];
 
@@ -121,16 +121,30 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       {step === 4 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Connect outputs</h3>
-          <p className="text-zinc-400 text-sm mt-1">Where Uzi ships. (Live publishing is wired in Phase 3.)</p>
-          <div className="grid sm:grid-cols-3 gap-3 mt-5">
+          <p className="text-zinc-400 text-sm mt-1">Pick a channel, then the formats you want. Each format becomes its own tailored post + preview. (Live publishing is Phase 3.)</p>
+          <div className="space-y-3 mt-5">
             {CHANNELS.map((c) => {
-              const on = cfg.channels?.[c.id];
+              const formats = CHANNEL_FORMATS[c.id] || [];
+              const anyOn = formats.some((f) => cfg.channels?.[`${c.id}:${f.id}`]);
               return (
-                <button key={c.id} onClick={() => u({ channels: { ...cfg.channels, [c.id]: !on } })} className={`p-4 rounded-xl border text-left ${on ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-                  <div className="text-xl text-accent">{c.glyph}</div>
-                  <div className="font-semibold text-sm mt-1">{c.name}</div>
-                  <div className="text-xs text-zinc-500">{on ? "Connected" : "Connect"}</div>
-                </button>
+                <div key={c.id} className={`p-4 rounded-xl border ${anyOn ? "border-lime-400/60 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xl text-accent">{c.glyph}</span>
+                    <span className="font-semibold text-sm">{c.name}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {formats.map((f) => {
+                      const key = `${c.id}:${f.id}`;
+                      const on = !!cfg.channels?.[key];
+                      return (
+                        <button key={f.id} onClick={() => u({ channels: { ...cfg.channels, [key]: !on } })}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium border ${on ? "border-lime-400 bg-lime-400 text-zinc-950" : "border-zinc-700 bg-zinc-900 text-zinc-300"}`}>
+                          {on ? "✓ " : ""}{f.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>

@@ -47,3 +47,43 @@ export const CHANNELS = [
 
 export type PillarCfg = Record<string, { on: boolean; freq: string }>;
 export type ChannelCfg = Record<string, boolean>;
+
+// Each channel exposes its own formats. "aspect" drives the preview frame.
+export type Aspect = "feed" | "vertical" | "wide" | "text" | "carousel" | "audio";
+export type Format = { id: string; name: string; aspect: Aspect };
+export const CHANNEL_FORMATS: Record<string, Format[]> = {
+  linkedin: [{ id: "post", name: "Post", aspect: "text" }, { id: "carousel", name: "Carousel", aspect: "carousel" }, { id: "article", name: "Article", aspect: "text" }],
+  x: [{ id: "post", name: "Post", aspect: "text" }, { id: "thread", name: "Thread", aspect: "text" }],
+  youtube: [{ id: "long", name: "Long-form", aspect: "wide" }, { id: "short", name: "Short", aspect: "vertical" }],
+  instagram: [{ id: "feed", name: "Feed", aspect: "feed" }, { id: "story", name: "Story", aspect: "vertical" }, { id: "reel", name: "Reel", aspect: "vertical" }, { id: "carousel", name: "Carousel", aspect: "carousel" }],
+  facebook: [{ id: "post", name: "Post", aspect: "text" }, { id: "story", name: "Story", aspect: "vertical" }, { id: "reel", name: "Reel", aspect: "vertical" }],
+  tiktok: [{ id: "video", name: "Video", aspect: "vertical" }],
+  podcast: [{ id: "episode", name: "Episode", aspect: "audio" }, { id: "clip", name: "Clip", aspect: "audio" }],
+};
+
+export type Output = { channelId: string; channelName: string; glyph: string; formatId: string; formatName: string; aspect: Aspect };
+
+// Active outputs from a channels config keyed "channelId:formatId" (with back-compat for old plain "channelId" booleans).
+export function activeOutputs(channels: Record<string, boolean>): Output[] {
+  const out: Output[] = [];
+  for (const ch of CHANNELS) {
+    const formats = CHANNEL_FORMATS[ch.id] || [];
+    let any = false;
+    for (const f of formats) {
+      if (channels?.[`${ch.id}:${f.id}`]) {
+        out.push({ channelId: ch.id, channelName: ch.name, glyph: ch.glyph, formatId: f.id, formatName: f.name, aspect: f.aspect });
+        any = true;
+      }
+    }
+    if (!any && channels?.[ch.id] && formats[0]) {
+      out.push({ channelId: ch.id, channelName: ch.name, glyph: ch.glyph, formatId: formats[0].id, formatName: formats[0].name, aspect: formats[0].aspect });
+    }
+  }
+  return out;
+}
+
+export function aspectFor(channelName: string, formatName: string): Aspect {
+  const ch = CHANNELS.find((c) => c.name === channelName);
+  const f = ch ? (CHANNEL_FORMATS[ch.id] || []).find((x) => x.name === formatName) : undefined;
+  return f?.aspect || "feed";
+}

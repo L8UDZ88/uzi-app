@@ -46,6 +46,7 @@ model ScheduleItem {
   date      DateTime
   pillar    String
   channel   String
+  format    String   @default("")
   status    String   @default("queued")
   createdAt DateTime @default(now())
 }

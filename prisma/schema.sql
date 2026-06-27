@@ -32,6 +32,7 @@ CREATE TABLE "ScheduleItem" (
   "date" TIMESTAMPTZ NOT NULL,
   "pillar" TEXT NOT NULL,
   "channel" TEXT NOT NULL,
+  "format" TEXT NOT NULL DEFAULT '',
   "status" TEXT NOT NULL DEFAULT 'queued',
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -110,7 +110,7 @@ function pillarCopy(pillar: string, b: Brand): Copy {
   };
 }
 
-export function generateDraft(pillar: string, channel: string, b: Brand): Draft {
+export function generateDraft(pillar: string, channel: string, format: string, b: Brand): Draft {
   const c = pillarCopy(pillar, b);
   const ch = channel || "Instagram";
   let headline = c.headline;
@@ -146,6 +146,38 @@ export function generateDraft(pillar: string, channel: string, b: Brand): Draft 
   } else if (ch === "X") {
     caption = c.caption; // keep it tight — X rewards brevity, ≤280 chars
     tagCount = 2;
+  }
+
+  // Format shaping — overrides channel defaults so each placement is native.
+  const fmt = (format || "").toLowerCase();
+  if (fmt === "story") {
+    caption = `${c.headline}\n\n👆 ${c.cta}`;
+    visualBrief = "9:16 Story frame — bold overlay text, brand sticker, and a link/swipe-up sticker for the CTA. Minimal caption. " + c.brief;
+    tagCount = 0;
+  } else if (fmt === "reel" || fmt === "short" || fmt === "video") {
+    headline = `Hook (0–2s): "${c.headline}…"`;
+    caption = `${c.headline} — ${c.caption}`;
+    visualBrief = "9:16 short video — hook in the first 2 seconds, trending audio, burned-in captions. " + c.brief;
+    tagCount = Math.min(tagCount, 4);
+  } else if (fmt === "carousel") {
+    caption = `${c.headline}\n\n${c.caption}\n\nSwipe → ${c.cta}`;
+    visualBrief = "Multi-slide carousel — Slide 1: hook. Slides 2–5: one point each. Final slide: the CTA. " + c.brief;
+  } else if (fmt === "thread") {
+    caption = `${c.caption}\n\n🧵 A thread ↓`;
+    visualBrief = "Thread — post 1 is the hook, 3–5 follow-ups each land one idea, last post is the CTA. " + c.brief;
+    tagCount = 2;
+  } else if (fmt === "article") {
+    caption = `${c.headline}\n\n${c.caption}\n\n${c.cta}`;
+    visualBrief = "Long-form article — header image plus structured sections. " + c.brief;
+    tagCount = 3;
+  } else if (fmt === "long") {
+    caption = `${c.caption}\n\nFull video — chapters + SEO description auto-generated.`;
+    visualBrief = "Long-form 16:9 video — full narrative with chapters. " + c.brief;
+    tagCount = 4;
+  } else if (fmt === "clip") {
+    caption = `Clip: ${c.caption}`;
+    visualBrief = "Short audiogram clip cut from the full episode, captioned for social. " + c.brief;
+    tagCount = 3;
   }
 
   return {

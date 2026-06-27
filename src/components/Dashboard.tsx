@@ -3,9 +3,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
-import { pillarsFor, CHANNELS } from "@/lib/constants";
+import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; glyph: string; status: string };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -19,7 +19,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const PILLARS = pillarsFor(campaign.campaignType);
   const pillars = PILLARS.filter((p) => campaign.pillars?.[p.id]?.on ?? true);
-  const chans = CHANNELS.filter((c) => campaign.channels?.[c.id]);
+  const outputs = activeOutputs(campaign.channels || {});
 
   const regen = async () => {
     setBusy(true);
@@ -32,7 +32,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true);
-    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel }) });
+    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format }) });
     const d = await res.json();
     setDraft(d.draft); setDraftLoading(false);
   };
@@ -60,12 +60,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
           <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}/7</div></Card>
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Channels</div><div className="text-3xl font-black">{chans.length}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Outputs</div><div className="text-3xl font-black">{outputs.length}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{campaign.cadence}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
-          {["calendar", "pillars", "channels"].map((t) => (
+          {["calendar", "pillars", "outputs"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
@@ -84,7 +84,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 <button key={e.id} onClick={() => openSlot(e)} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm text-left hover:bg-zinc-800/50 rounded-lg transition">
                   <div className="w-20 text-zinc-500">{e.day} {e.date.slice(5)}</div>
                   <div className="w-8 text-center text-accent">{e.glyph}</div>
-                  <div className="w-24 text-zinc-300">{e.channel}</div>
+                  <div className="w-28 text-zinc-300 truncate">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
                   <div className="flex-1 text-zinc-100">{e.pillar}</div>
                   <span className={`text-xs rounded-full px-2 py-0.5 ${e.status === "approved" ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{e.status}</span>
                 </button>
@@ -98,10 +98,11 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{campaign.pillars?.[p.id]?.freq || "weekly"}</div></Card>
           ))}</div>
         )}
-        {tab === "channels" && (
-          <div className="grid sm:grid-cols-3 gap-3">{CHANNELS.map((c) => (
-            <Card key={c.id} className="p-4 flex items-center gap-3"><span className="text-xl text-accent">{c.glyph}</span><div><div className="font-semibold text-sm">{c.name}</div><div className="text-xs text-zinc-500">{campaign.channels?.[c.id] ? "Connected" : "Not connected"}</div></div></Card>
-          ))}</div>
+        {tab === "outputs" && (
+          <div className="grid sm:grid-cols-3 gap-3">{outputs.map((o) => (
+            <Card key={`${o.channelId}:${o.formatId}`} className="p-4 flex items-center gap-3"><span className="text-xl text-accent">{o.glyph}</span><div><div className="font-semibold text-sm">{o.channelName} · {o.formatName}</div><div className="text-xs text-zinc-500 capitalize">{o.aspect} placement</div></div></Card>
+          ))}
+          {outputs.length === 0 && <div className="text-zinc-500 text-sm p-2">No outputs connected yet — add some in Edit setup → Outputs.</div>}</div>
         )}
       </div>
 
@@ -110,7 +111,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <div className="bg-zinc-950 border-l border-zinc-800 w-full max-w-lg h-full overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}</div>
+                <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
                 <div className="font-bold text-lg">{open.pillar}</div>
               </div>
               <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
@@ -119,7 +120,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             {draft && (
               <div className="mt-5 space-y-4">
                 <div className="text-xs text-zinc-500">Preview · how it'll post</div>
-                <PostPreview channel={open.channel || "Instagram"} draft={draft} handle={campaign.handle} />
+                <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} />
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">

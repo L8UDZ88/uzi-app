@@ -16,7 +16,7 @@ export default async function CampaignPage({ params }: { params: { id: string } 
     id: s.id,
     date: s.date.toISOString().slice(0, 10),
     day: s.date.toLocaleDateString(undefined, { weekday: "short" }),
-    pillar: s.pillar, channel: s.channel,
+    pillar: s.pillar, channel: s.channel, format: (s as any).format || "",
     glyph: ({ LinkedIn: "in", X: "𝕏", YouTube: "▶", Instagram: "◎", Facebook: "f", TikTok: "♪", Podcast: "🎙" } as any)[s.channel] || "·",
     status: s.status,
   }));
