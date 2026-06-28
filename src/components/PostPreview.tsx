@@ -9,8 +9,8 @@ import type { Aspect } from "@/lib/constants";
 type Draft = { headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function PostPreview({
-  channel, format, aspect, draft, handle,
-}: { channel: string; format?: string; aspect?: Aspect; draft: Draft; handle?: string }) {
+  channel, format, aspect, draft, handle, imageUrl,
+}: { channel: string; format?: string; aspect?: Aspect; draft: Draft; handle?: string; imageUrl?: string }) {
   const h = (handle || "@yourbrand").replace(/^@/, "");
   const initial = (h[0] || "U").toUpperCase();
   const asp: Aspect = aspect || "feed";
@@ -30,17 +30,20 @@ export default function PostPreview({
     return (
       <div className="bg-white text-zinc-900 rounded-2xl overflow-hidden border border-zinc-200 shadow-sm">
         <div className={`relative ${frame} w-full bg-gradient-to-br from-zinc-800 to-zinc-950 text-white`}>
-          <div className="absolute top-0 inset-x-0 flex items-center gap-2 p-3">
+          {imageUrl && <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+          <div className="absolute top-0 inset-x-0 flex items-center gap-2 p-3 z-10">
             <div className="w-8 h-8 rounded-full bg-white/90 text-zinc-900 flex items-center justify-center text-xs font-bold">{initial}</div>
             <div className="text-sm font-semibold drop-shadow">{h}</div>
             <div className="ml-auto text-[10px] uppercase tracking-wide bg-white/15 rounded-full px-2 py-0.5">{format || "Story"}</div>
           </div>
-          <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-white/60 mb-2">Visual · to be generated</div>
-              <div className="text-sm text-white/90 leading-snug max-w-[15rem] mx-auto">{draft.visualBrief}</div>
+          {!imageUrl && (
+            <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-white/60 mb-2">Visual · to be generated</div>
+                <div className="text-sm text-white/90 leading-snug max-w-[15rem] mx-auto">{draft.visualBrief}</div>
+              </div>
             </div>
-          </div>
+          )}
           <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
             <div className="text-sm font-medium leading-snug line-clamp-3">{draft.caption}</div>
             <div className="mt-2 inline-block text-xs font-semibold bg-white text-zinc-900 rounded-full px-3 py-1">{draft.cta}</div>
@@ -70,11 +73,15 @@ export default function PostPreview({
   }
 
   const Media = (
-    <div className={`relative ${frame} w-full bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center p-5`}>
-      <div className="text-center">
-        <div className="text-[10px] uppercase tracking-wider text-zinc-400 mb-2">Visual · to be generated</div>
-        <div className="text-sm text-zinc-600 max-w-xs mx-auto leading-snug">{draft.visualBrief}</div>
-      </div>
+    <div className={`relative ${frame} w-full bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center p-5 overflow-hidden`}>
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <div className="text-center">
+          <div className="text-[10px] uppercase tracking-wider text-zinc-400 mb-2">Visual · to be generated</div>
+          <div className="text-sm text-zinc-600 max-w-xs mx-auto leading-snug">{draft.visualBrief}</div>
+        </div>
+      )}
       {isCarousel && (
         <>
           <div className="absolute top-2 right-3 text-xs bg-black/60 text-white rounded-full px-2 py-0.5">1/5</div>

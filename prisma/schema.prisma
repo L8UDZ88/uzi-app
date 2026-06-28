@@ -14,8 +14,27 @@ model User {
   email        String   @unique
   name         String?
   passwordHash String
+  // Google Drive connection (per user — one Google account powers all their campaigns)
+  googleRefreshToken String?
+  googleEmail        String?
   brands       Brand[]
+  social       SocialConnection[]
   createdAt    DateTime @default(now())
+}
+
+// A linked social account the app can publish to (per user, per platform).
+model SocialConnection {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform     String   // linkedin | instagram | facebook | youtube | tiktok | x
+  accessToken  String
+  refreshToken String?
+  externalId   String?  // platform identity (LinkedIn URN, FB page id, channel id…)
+  displayName  String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  @@unique([userId, platform])
 }
 
 model Brand {
@@ -34,6 +53,7 @@ model Brand {
   inputs    Json     @default("{}")
   cadence   String   @default("steady")
   onboarded Boolean  @default(false)
+  autoDeliver Boolean @default(false) // when true, approved posts auto-publish on schedule
   schedule  ScheduleItem[]
   assets    Asset[]
   updatedAt DateTime @updatedAt
@@ -47,7 +67,12 @@ model ScheduleItem {
   pillar    String
   channel   String
   format    String   @default("")
-  status    String   @default("queued")
+  status    String   @default("queued") // queued | approved | ready | published | failed
+  caption     String?  @db.Text          // snapshot of approved copy, for publishing
+  mediaUrl    String?                     // generated/uploaded visual to publish
+  publishedAt DateTime?
+  externalUrl String?                     // link to the live post
+  publishError String?
   createdAt DateTime @default(now())
 }
 

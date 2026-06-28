@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; externalUrl?: string | null };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -16,10 +16,37 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [open, setOpen] = useState<Slot | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
+  const [usedAI, setUsedAI] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
+  const [deliverBusy, setDeliverBusy] = useState(false);
 
   const PILLARS = pillarsFor(campaign.campaignType);
   const pillars = PILLARS.filter((p) => campaign.pillars?.[p.id]?.on ?? true);
   const outputs = activeOutputs(campaign.channels || {});
+
+  useEffect(() => {
+    fetch(`/api/social/status?campaignId=${campaignId}`).then((x) => x.json()).then(setSocial).catch(() => {});
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("social")) setTab("deliver");
+  }, [campaignId]);
+
+  const toggleAuto = async (on: boolean) => {
+    setSocial({ ...social, autoDeliver: on });
+    await fetch("/api/social/auto-deliver", { method: "POST", body: JSON.stringify({ campaignId, on }) });
+  };
+  const connectLinkedIn = () => { window.location.href = `/api/social/linkedin/auth?campaignId=${campaignId}`; };
+  const deliverNow = async () => {
+    setDeliverBusy(true);
+    const d = await (await fetch("/api/social/run-now", { method: "POST", body: JSON.stringify({ campaignId }) })).json();
+    setDeliverBusy(false);
+    if (Array.isArray(d.items)) {
+      const byId: Record<string, any> = {};
+      d.items.forEach((it: any) => (byId[it.id] = it));
+      setSlots(slots.map((s) => (byId[s.id] ? { ...s, status: byId[s.id].status, externalUrl: byId[s.id].externalUrl } : s)));
+    }
+    alert(`Delivered: ${d.published || 0} published · ${d.ready || 0} ready to post manually · ${d.failed || 0} failed.`);
+  };
 
   const regen = async () => {
     setBusy(true);
@@ -31,17 +58,32 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
-    setOpen(s); setDraft(null); setDraftLoading(true);
+    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null);
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format }) });
     const d = await res.json();
-    setDraft(d.draft); setDraftLoading(false);
+    setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
+  };
+  const genImage = async () => {
+    if (!open || !draft) return;
+    setImgBusy(true);
+    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: draft.visualBrief, aspect: aspectFor(open.channel, open.format) }) });
+    const d = await res.json();
+    setImgBusy(false);
+    if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image.");
   };
   const approve = async () => {
-    if (!open) return;
-    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved" }) });
+    if (!open || !draft) return;
+    const cap = [draft.caption, (draft.hashtags || []).join(" ")].filter(Boolean).join("\n\n");
+    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved", caption: cap, mediaUrl: image }) });
     setSlots(slots.map((s) => (s.id === open.id ? { ...s, status: "approved" } : s)));
     setOpen(null);
   };
+  const statusStyle = (s: string) =>
+    s === "published" ? "bg-emerald-400/20 text-emerald-300" :
+    s === "approved" ? "bg-lime-400/20 text-accent" :
+    s === "ready" ? "bg-amber-400/20 text-amber-300" :
+    s === "failed" ? "bg-red-400/20 text-red-300" :
+    "bg-zinc-800 text-zinc-400";
 
   return (
     <div>
@@ -65,7 +107,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
-          {["calendar", "pillars", "outputs"].map((t) => (
+          {["calendar", "pillars", "outputs", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
@@ -76,7 +118,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               <div className="font-bold">Auto-built calendar · click any post to draft it</div>
               <div className="flex gap-2">
                 <Btn kind="ghost" className="text-xs px-3 py-1.5" disabled={busy} onClick={regen}>{busy ? "Rebuilding…" : "Rebuild"}</Btn>
-                <Btn className="text-xs px-3 py-1.5" onClick={() => alert("Phase 3: publishes approved posts to your connected channels on schedule.")}>Auto-deliver ▶</Btn>
+                <Btn className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
@@ -86,7 +128,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <div className="w-8 text-center text-accent">{e.glyph}</div>
                   <div className="w-28 text-zinc-300 truncate">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
                   <div className="flex-1 text-zinc-100">{e.pillar}</div>
-                  <span className={`text-xs rounded-full px-2 py-0.5 ${e.status === "approved" ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{e.status}</span>
+                  <span className={`text-xs rounded-full px-2 py-0.5 ${statusStyle(e.status)}`}>{e.status}</span>
                 </button>
               ))}
               {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
@@ -104,6 +146,57 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           ))}
           {outputs.length === 0 && <div className="text-zinc-500 text-sm p-2">No outputs connected yet — add some in Edit setup → Outputs.</div>}</div>
         )}
+        {tab === "deliver" && (
+          <div className="space-y-4">
+            <Card className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-bold">Auto-deliver</div>
+                  <div className="text-zinc-400 text-sm">When on, approved posts publish automatically at their scheduled time (checked hourly).</div>
+                </div>
+                <button onClick={() => toggleAuto(!social.autoDeliver)} className={`w-12 h-7 rounded-full relative shrink-0 ${social.autoDeliver ? "bg-accent" : "bg-zinc-700"}`}>
+                  <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-zinc-950 transition-all ${social.autoDeliver ? "left-[22px]" : "left-0.5"}`} />
+                </button>
+              </div>
+              <div className="mt-4 flex items-center gap-2">
+                <Btn className="text-sm" disabled={deliverBusy} onClick={deliverNow}>{deliverBusy ? "Delivering…" : "Deliver due posts now ▶"}</Btn>
+                <span className="text-xs text-zinc-500">Publishes approved posts whose time has passed.</span>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="font-bold mb-1">Connected accounts</div>
+              <div className="text-zinc-400 text-sm mb-4">Uzi publishes to the platforms this campaign posts to. Connect each account once.</div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {(social.platforms || []).map((p: any) => (
+                  <div key={p.platform} className={`p-4 rounded-xl border ${p.connected ? "border-lime-400/50 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold capitalize">{p.platform}</div>
+                      {p.connected
+                        ? <span className="text-[10px] bg-emerald-400/20 text-emerald-300 rounded-full px-2 py-0.5">Connected</span>
+                        : p.ready
+                          ? <span className="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">Not connected</span>
+                          : <span className="text-[10px] bg-amber-400/20 text-amber-300 rounded-full px-2 py-0.5">Pending API approval</span>}
+                    </div>
+                    {p.connected && p.displayName && <div className="text-xs text-zinc-500 mt-1">{p.displayName}</div>}
+                    {!p.connected && p.platform === "linkedin" && social.linkedinConfigured && (
+                      <button onClick={connectLinkedIn} className="mt-3 bg-accent text-zinc-950 font-semibold text-xs rounded-lg px-3 py-1.5">Connect LinkedIn</button>
+                    )}
+                    {!p.connected && p.platform === "linkedin" && !social.linkedinConfigured && (
+                      <div className="text-xs text-zinc-500 mt-2">Add LinkedIn API keys in Vercel to enable.</div>
+                    )}
+                    {!p.connected && p.platform !== "linkedin" && (
+                      <div className="text-xs text-zinc-500 mt-2">Publishing for {p.platform} unlocks once its API app is approved. Posts stay “ready” to publish manually until then.</div>
+                    )}
+                  </div>
+                ))}
+                {(social.platforms || []).length === 0 && <div className="text-zinc-500 text-sm">Add outputs in Edit setup → Outputs to see platforms here.</div>}
+              </div>
+            </Card>
+
+            <div className="text-xs text-zinc-600">LinkedIn publishes today. Instagram, Facebook, YouTube, TikTok and X each need their own API app review before auto-posting — until then those posts are marked <span className="text-amber-300">ready</span> so you can post them manually in one click.</div>
+          </div>
+        )}
       </div>
 
       {open && (
@@ -119,8 +212,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             {draftLoading && <div className="text-zinc-500 mt-8">Drafting…</div>}
             {draft && (
               <div className="mt-5 space-y-4">
-                <div className="text-xs text-zinc-500">Preview · how it'll post</div>
-                <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} />
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-zinc-500">Preview · how it'll post</div>
+                  <span className={`text-[10px] rounded-full px-2 py-0.5 ${usedAI ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{usedAI ? "✨ AI copy" : "Template copy"}</span>
+                </div>
+                <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} />
+                <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">
@@ -133,7 +230,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
                   <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
                 </div>
-                <div className="text-xs text-zinc-600">The image is a placeholder until the image generator is wired — caption &amp; layout are real.</div>
+                <div className="text-xs text-zinc-600">{image ? "AI scene draft — composite your real product on top before publishing (the brand never lets AI redraw the product)." : "Caption & layout are real. Click “Generate visual” to render a scene from the brief (needs the image key in Vercel)."}</div>
               </div>
             )}
           </div>

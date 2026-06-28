@@ -11,6 +11,10 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const [step, setStep] = useState(0);
   const [cfg, setCfg] = useState<any>({ campaignType: "physical", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
   const [loaded, setLoaded] = useState(false);
+  const [drive, setDrive] = useState<any>({ configured: false, connected: false });
+  const [folders, setFolders] = useState<any[]>([]);
+  const [folderQ, setFolderQ] = useState("");
+  const [driveBusy, setDriveBusy] = useState(false);
 
   useEffect(() => {
     fetch(`/api/campaigns/${campaignId}`).then((x) => x.json()).then((d) => {
@@ -22,7 +26,32 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       });
       setLoaded(true);
     });
+    fetch(`/api/google/status?campaignId=${campaignId}`).then((x) => x.json()).then(setDrive).catch(() => {});
+    // Returning from Google OAuth lands here with ?drive=... — jump to the Inputs step.
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(2);
   }, [campaignId]);
+
+  // When connected but no folder chosen yet, preload root folders for the picker.
+  useEffect(() => {
+    if (drive.connected && !drive.folderId && folders.length === 0) searchFolders("");
+  }, [drive.connected, drive.folderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const connectDrive = () => { window.location.href = `/api/google/auth?campaignId=${campaignId}`; };
+  const searchFolders = async (q: string) => {
+    setFolderQ(q);
+    try { const d = await (await fetch(`/api/google/folders?q=${encodeURIComponent(q)}`)).json(); setFolders(d.folders || []); }
+    catch { setFolders([]); }
+  };
+  const pickFolder = async (f: any) => {
+    setDriveBusy(true);
+    const d = await (await fetch(`/api/google/connect-folder`, { method: "POST", body: JSON.stringify({ campaignId, folderId: f.id, folderName: f.name }) })).json();
+    setDriveBusy(false);
+    if (d.ok) {
+      setDrive({ ...drive, folderId: f.id, folderName: f.name, fileCount: d.fileCount, textFiles: d.textFiles });
+      u({ inputs: { ...cfg.inputs, drive: true, driveFolderName: f.name } });
+      setFolders([]);
+    }
+  };
 
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
   const save = (extra: any = {}) => fetch(`/api/campaigns/${campaignId}`, { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
@@ -82,10 +111,38 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
           <h3 className="text-xl font-bold">Connect inputs</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
           <div className="grid sm:grid-cols-2 gap-4 mt-5">
-            <button onClick={() => u({ inputs: { ...cfg.inputs, drive: true } })} className={`text-left p-5 rounded-xl border ${cfg.inputs?.drive ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-              <div className="font-bold">{cfg.inputs?.drive ? "✓ Google Drive connected" : "Connect Google Drive"}</div>
-              <div className="text-zinc-400 text-sm mt-1">Sync a folder of brand assets &amp; copy.</div>
-            </button>
+            <div className={`p-5 rounded-xl border ${drive.folderId ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+              <div className="font-bold flex items-center gap-2">Google Drive {drive.connected && <span className="text-[10px] uppercase tracking-wide bg-zinc-800 text-zinc-300 rounded-full px-2 py-0.5">linked</span>}</div>
+              {!drive.configured && (
+                <div className="text-zinc-500 text-xs mt-2">Drive isn&apos;t enabled on the server yet — add the Google API keys in Vercel to turn it on.</div>
+              )}
+              {drive.configured && !drive.connected && (
+                <>
+                  <div className="text-zinc-400 text-sm mt-1">Link your Google account, then pick a folder of brand copy &amp; assets.</div>
+                  <button onClick={connectDrive} className="mt-3 bg-accent text-zinc-950 font-semibold text-sm rounded-lg px-4 py-2">Connect Google Drive</button>
+                </>
+              )}
+              {drive.connected && drive.folderId && (
+                <>
+                  <div className="text-sm text-zinc-200 mt-2">✓ Folder: <span className="font-semibold">{drive.folderName}</span></div>
+                  <div className="text-xs text-zinc-500">{drive.textFiles || 0} readable files ingested · grounds your captions</div>
+                  <button onClick={() => setDrive({ ...drive, folderId: null })} className="mt-2 text-xs text-zinc-400 underline">Change folder</button>
+                </>
+              )}
+              {drive.connected && !drive.folderId && (
+                <div className="mt-2">
+                  <div className="text-xs text-zinc-400 mb-2">{drive.email ? `Linked as ${drive.email}. ` : ""}Pick a folder:</div>
+                  <input value={folderQ} onChange={(e) => searchFolders(e.target.value)} placeholder="Search folders…" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mb-2" />
+                  <div className="max-h-40 overflow-auto divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+                    {folders.map((f) => (
+                      <button key={f.id} disabled={driveBusy} onClick={() => pickFolder(f)} className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800/60 disabled:opacity-50">📁 {f.name}</button>
+                    ))}
+                    {folders.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">No folders found — try a search term.</div>}
+                  </div>
+                  {driveBusy && <div className="text-xs text-accent mt-2">Reading folder…</div>}
+                </div>
+              )}
+            </div>
             <label className="text-left p-5 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/40 cursor-pointer">
               <div className="font-bold">Drag &amp; drop upload</div>
               <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop docs, screenshots, logos, copy"}</div>

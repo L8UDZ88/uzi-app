@@ -5,7 +5,7 @@
 
 import { generateDraft, Draft } from "./generate";
 
-type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string };
+type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string };
 
 const MODEL = "claude-sonnet-4-6"; // swap to "claude-haiku-4-5-20251001" for cheaper, or "claude-opus-4-8" for top quality
 
@@ -24,18 +24,26 @@ const FORMAT_HINT: Record<string, string> = {
   clip: "Format = AUDIO CLIP: short audiogram clip pulled from the episode.",
 };
 
-export async function generateDraftAI(pillar: string, channel: string, format: string, brand: Brand): Promise<Draft> {
+export function aiEnabled(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
+}
+
+export async function generateDraftAI(pillar: string, channel: string, format: string, brand: Brand): Promise<{ draft: Draft; usedAI: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return generateDraft(pillar, channel, format, brand); // no key yet → templates
+  if (!key) return { draft: generateDraft(pillar, channel, format, brand), usedAI: false }; // no key yet → templates
 
   const ch = channel || "Instagram";
   const fmt = (format || "").toLowerCase();
   const fmtHint = FORMAT_HINT[fmt] || "";
+  const src = (brand.sourceText || "").trim();
   const system =
     `You are the senior social copywriter for ${brand.name || "the brand"}. ` +
     `Brand voice: ${brand.voice || "warm, bold, concise, human"}. ` +
     (brand.tagline ? `Tagline (don't repeat it verbatim): "${brand.tagline}". ` : "") +
     (brand.region ? `Region: ${brand.region}. ` : "") +
+    (src
+      ? `\n\nGround every post in the brand's REAL source material below — use its facts, product names, claims, and phrasing. Do not invent facts that contradict it.\n<source_material>\n${src.slice(0, 9000)}\n</source_material>\n`
+      : "") +
     `Write platform-native, original copy. Never use a generic template. Vary the hook and angle every time — no two posts should feel alike.`;
 
   const user =
@@ -57,21 +65,24 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
         messages: [{ role: "user", content: user }],
       }),
     });
-    if (!res.ok) return generateDraft(pillar, channel, format, brand);
+    if (!res.ok) return { draft: generateDraft(pillar, channel, format, brand), usedAI: false };
     const data: any = await res.json();
     const text: string = (data.content || []).map((b: any) => (b.type === "text" ? b.text : "")).join("").trim();
     const clean = text.replace(/```json/gi, "").replace(/```/g, "").trim();
     const json = JSON.parse(clean);
     return {
-      pillar,
-      channel: ch,
-      headline: String(json.headline || ""),
-      caption: String(json.caption || ""),
-      hashtags: Array.isArray(json.hashtags) ? json.hashtags.map(String) : [],
-      visualBrief: String(json.visualBrief || ""),
-      cta: String(json.cta || ""),
+      draft: {
+        pillar,
+        channel: ch,
+        headline: String(json.headline || ""),
+        caption: String(json.caption || ""),
+        hashtags: Array.isArray(json.hashtags) ? json.hashtags.map(String) : [],
+        visualBrief: String(json.visualBrief || ""),
+        cta: String(json.cta || ""),
+      },
+      usedAI: true,
     };
   } catch {
-    return generateDraft(pillar, channel, format, brand); // any error → safe fallback
+    return { draft: generateDraft(pillar, channel, format, brand), usedAI: false }; // any error → safe fallback
   }
 }

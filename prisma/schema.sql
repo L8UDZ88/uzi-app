@@ -6,8 +6,14 @@ CREATE TABLE "User" (
   "email" TEXT NOT NULL UNIQUE,
   "name" TEXT,
   "passwordHash" TEXT NOT NULL,
+  "googleRefreshToken" TEXT,
+  "googleEmail" TEXT,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- If the User table already exists, run instead:
+-- ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "googleRefreshToken" TEXT;
+-- ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "googleEmail" TEXT;
+-- (The Vercel build runs `prisma db push`, so this applies automatically on deploy.)
 
 CREATE TABLE "Brand" (
   "id" TEXT PRIMARY KEY,
@@ -23,6 +29,7 @@ CREATE TABLE "Brand" (
   "inputs" JSONB NOT NULL DEFAULT '{}',
   "cadence" TEXT NOT NULL DEFAULT 'steady',
   "onboarded" BOOLEAN NOT NULL DEFAULT false,
+  "autoDeliver" BOOLEAN NOT NULL DEFAULT false,
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -34,8 +41,31 @@ CREATE TABLE "ScheduleItem" (
   "channel" TEXT NOT NULL,
   "format" TEXT NOT NULL DEFAULT '',
   "status" TEXT NOT NULL DEFAULT 'queued',
+  "caption" TEXT,
+  "mediaUrl" TEXT,
+  "publishedAt" TIMESTAMPTZ,
+  "externalUrl" TEXT,
+  "publishError" TEXT,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE "SocialConnection" (
+  "id" TEXT PRIMARY KEY,
+  "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+  "platform" TEXT NOT NULL,
+  "accessToken" TEXT NOT NULL,
+  "refreshToken" TEXT,
+  "externalId" TEXT,
+  "displayName" TEXT,
+  "expiresAt" TIMESTAMPTZ,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE ("userId", "platform")
+);
+-- On an existing DB the Vercel build's `prisma db push` adds the new columns/table automatically.
+-- Manual equivalent:
+-- ALTER TABLE "Brand" ADD COLUMN IF NOT EXISTS "autoDeliver" BOOLEAN NOT NULL DEFAULT false;
+-- ALTER TABLE "ScheduleItem" ADD COLUMN IF NOT EXISTS "caption" TEXT, ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT,
+--   ADD COLUMN IF NOT EXISTS "publishedAt" TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS "externalUrl" TEXT, ADD COLUMN IF NOT EXISTS "publishError" TEXT;
 
 CREATE TABLE "Asset" (
   "id" TEXT PRIMARY KEY,
