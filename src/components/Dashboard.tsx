@@ -23,6 +23,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [voBusy, setVoBusy] = useState(false);
   const [voVoice, setVoVoice] = useState("alloy");
   const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
+  const [stockQ, setStockQ] = useState("");
+  const [clips, setClips] = useState<any[]>([]);
+  const [stockBusy, setStockBusy] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -68,10 +72,21 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
-    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null);
+    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null);
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
+    const kw = String(d.draft?.visualBrief || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 3).slice(0, 4).join(" ");
+    setStockQ(kw || campaign.region || "");
+  };
+  const genStock = async () => {
+    if (!open) return;
+    setStockBusy(true);
+    const orientation = aspectFor(open.channel, open.format) === "wide" ? "landscape" : "portrait";
+    const res = await fetch("/api/stock/search", { method: "POST", body: JSON.stringify({ campaignId, query: stockQ, orientation }) });
+    const d = await res.json();
+    setStockBusy(false);
+    if (Array.isArray(d.clips)) setClips(d.clips); else alert(d.error || "Couldn't search stock.");
   };
   const delPost = async (id: string, e: any) => {
     e.stopPropagation();
@@ -253,6 +268,26 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
                 </div>
                 {vo && <audio controls src={vo} className="w-full" />}
+                <details className="text-sm">
+                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Stock footage 🎞</summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input value={stockQ} onChange={(e) => setStockQ(e.target.value)} placeholder="Search clips…" className="flex-1 bg-zinc-800 rounded-lg px-3 py-2 text-sm" />
+                      <Btn kind="ghost" className="text-sm" disabled={stockBusy} onClick={genStock}>{stockBusy ? "Searching…" : "Find"}</Btn>
+                    </div>
+                    {clips.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 max-h-56 overflow-auto">
+                        {clips.map((c) => (
+                          <a key={c.id} href={c.download} target="_blank" rel="noreferrer" onClick={() => setPicked(c.id)} className={`relative block rounded-lg overflow-hidden border ${picked === c.id ? "border-lime-400" : "border-zinc-800"}`}>
+                            <img src={c.thumb} alt="" className="w-full h-20 object-cover" />
+                            <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">{Math.round(c.duration)}s</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips feed the video render (Stage 3). Pexels — free, commercial-use.</div>
+                  </div>
+                </details>
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">

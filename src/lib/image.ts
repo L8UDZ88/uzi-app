@@ -10,9 +10,12 @@ export function imageEnabled(): boolean {
   return !!process.env.OPENAI_API_KEY;
 }
 
-// Tries the configured model, then auto-falls back to dall-e-3 if the first is unavailable.
-const PRIMARY = process.env.IMAGE_MODEL || "gpt-image-1";
-const FALLBACK = "dall-e-3";
+// Tries each image model in order and uses the first one this account/project can access.
+// (Different OpenAI accounts have different image models enabled.) IMAGE_MODEL, if set, goes first.
+function modelChain(): string[] {
+  const chain = [process.env.IMAGE_MODEL || "", "gpt-image-1", "dall-e-3", "dall-e-2"].filter(Boolean);
+  return Array.from(new Set(chain));
+}
 
 function sizeFor(model: string, aspect?: string): string {
   const dalle = model.startsWith("dall-e");
@@ -59,13 +62,11 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
     `Scene: ${brief}. ` +
     `Premium, authentic, natural light. No text, no logos, no watermarks, no product packaging with readable labels. ` +
     `Leave clean negative space so caption text can be overlaid.`;
-  const first = await tryModel(PRIMARY, key, prompt, aspect);
-  if (first.url) return { image: first.url };
-  let err = first.error || "unknown error";
-  if (PRIMARY !== FALLBACK) {
-    const second = await tryModel(FALLBACK, key, prompt, aspect);
-    if (second.url) return { image: second.url };
-    err = `${err} | ${second.error || "unknown error"}`;
+  const errors: string[] = [];
+  for (const model of modelChain()) {
+    const r = await tryModel(model, key, prompt, aspect);
+    if (r.url) return { image: r.url };
+    errors.push(r.error || `${model}: unknown error`);
   }
-  return { image: null, error: err };
+  return { image: null, error: errors.join(" | ") };
 }
