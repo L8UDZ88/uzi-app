@@ -56,6 +56,14 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
   const save = (extra: any = {}) => fetch(`/api/campaigns/${campaignId}`, { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
   const next = async () => {
+    // "Now in [city]" requires at least one city before leaving the Pillars step.
+    const nowin = pillarsFor(cfg.campaignType).find((p) => /\[city\]/i.test(p.name));
+    if (step === 3 && nowin && (cfg.pillars?.[nowin.id]?.on ?? true)) {
+      if (!String(cfg.pillars?.[nowin.id]?.cities || "").trim()) {
+        alert(`Add at least one city for "${nowin.name}" — each post anchors to a specific city. (Or switch that pillar off if you don't want city-launch posts.)`);
+        return;
+      }
+    }
     await save();
     if (step < STEPS.length - 1) setStep(step + 1);
     else { await save({ onboarded: true }); await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }); r.push(`/campaign/${campaignId}`); }
@@ -160,14 +168,24 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
             {PILLARS.map((p) => {
               const on = cfg.pillars?.[p.id]?.on ?? true;
               const freq = cfg.pillars?.[p.id]?.freq ?? "weekly";
-              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, ...patch } } });
+              const cities = cfg.pillars?.[p.id]?.cities ?? "";
+              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, ...patch } } });
+              const isNowin = /\[city\]/i.test(p.name);
               return (
-                <div key={p.id} className={`flex items-center gap-4 p-3 rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
-                  <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
-                  <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
-                  <select value={freq} onChange={(e) => setP({ freq: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
-                    <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
-                  </select>
+                <div key={p.id} className={`rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
+                  <div className="flex items-center gap-4 p-3">
+                    <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
+                    <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
+                    <select value={freq} onChange={(e) => setP({ freq: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                      <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  {isNowin && on && (
+                    <div className="px-3 pb-3">
+                      <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
+                      <input value={cities} onChange={(e) => setP({ cities: e.target.value })} placeholder="e.g. Catania, Messina, Siracusa" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-1" />
+                    </div>
+                  )}
                 </div>
               );
             })}

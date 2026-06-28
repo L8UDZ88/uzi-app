@@ -40,6 +40,7 @@ CREATE TABLE "ScheduleItem" (
   "pillar" TEXT NOT NULL,
   "channel" TEXT NOT NULL,
   "format" TEXT NOT NULL DEFAULT '',
+  "city" TEXT,
   "status" TEXT NOT NULL DEFAULT 'queued',
   "caption" TEXT,
   "mediaUrl" TEXT,

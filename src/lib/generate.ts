@@ -3,7 +3,7 @@
 // a channel-aware caption, hashtags, a visual brief, and a CTA.
 // Deterministic templates (no external API) — the "machine" that drafts every slot.
 
-type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string };
+type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string; city?: string };
 
 export type Draft = {
   pillar: string; channel: string; headline: string;
@@ -17,6 +17,7 @@ type Copy = { headline: string; caption: string; brief: string; cta: string; tag
 function pillarCopy(pillar: string, b: Brand): Copy {
   const brand = b.name || "the brand";
   const region = b.region || "your area";
+  const place = b.city || region; // "Now in [city]" anchors to the specific city when set
   const tag = b.tagline || "";
   const map: Record<string, Copy> = {
     "Spotted at": {
@@ -32,10 +33,10 @@ function pillarCopy(pillar: string, b: Brand): Copy {
       cta: "Grab yours →", tags: [slug(brand), "grabandgo", "readywhenyouare"],
     },
     "Now in [city]": {
-      headline: `${brand} just landed`,
-      caption: `${brand} is now in ${region}. ${tag} Go say hi to it on the shelf — new stores every month.`,
-      brief: `BACKGROUND = a real stock photo of the actual city/place, dark scrim for legible text, product bottom-right. Fallback: an iconic ${region} landmark. Never a generic placeholder.`,
-      cta: "See where to find it →", tags: [slug(brand), "nowin" + slug(region), slug(region), "justlanded"],
+      headline: `${brand} just landed in ${place}`,
+      caption: `${brand} is now in ${place}. ${tag} Go say hi to it on the shelf.`,
+      brief: `BACKGROUND = a real stock photo of ${place} specifically (its skyline/landmark), dark scrim for legible text, product bottom-right. Never a generic placeholder.`,
+      cta: `Find it in ${place} →`, tags: [slug(brand), "nowin" + slug(place), slug(place), "justlanded"],
     },
     "Store → lifestyle bridge": {
       headline: "From the shelf to the good part",

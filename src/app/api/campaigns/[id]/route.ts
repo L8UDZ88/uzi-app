@@ -30,3 +30,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   });
   return NextResponse.json({ campaign });
 }
+
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const uid = await getUserId();
+  if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await owned(uid, params.id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  await prisma.brand.delete({ where: { id: params.id } }); // cascades schedule + assets
+  return NextResponse.json({ ok: true });
+}

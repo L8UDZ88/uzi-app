@@ -5,7 +5,7 @@ import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; externalUrl?: string | null };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -19,6 +19,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [usedAI, setUsedAI] = useState(false);
   const [image, setImage] = useState<string | null>(null);
   const [imgBusy, setImgBusy] = useState(false);
+  const [vo, setVo] = useState<string | null>(null);
+  const [voBusy, setVoBusy] = useState(false);
+  const [voVoice, setVoVoice] = useState("alloy");
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -58,10 +61,17 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
-    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null);
-    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format }) });
+    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null);
+    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
+  };
+  const delPost = async (id: string, e: any) => {
+    e.stopPropagation();
+    if (!confirm("Delete this post from the calendar?")) return;
+    await fetch(`/api/schedule/${id}`, { method: "DELETE" });
+    setSlots(slots.filter((s) => s.id !== id));
+    if (open?.id === id) setOpen(null);
   };
   const genImage = async () => {
     if (!open || !draft) return;
@@ -70,6 +80,14 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const d = await res.json();
     setImgBusy(false);
     if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image.");
+  };
+  const genVoice = async () => {
+    if (!open || !draft) return;
+    setVoBusy(true);
+    const res = await fetch("/api/voiceover", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, voice: voVoice }) });
+    const d = await res.json();
+    setVoBusy(false);
+    if (d.audio) setVo(d.audio); else alert(d.error || "Couldn't generate voiceover.");
   };
   const approve = async () => {
     if (!open || !draft) return;
@@ -123,13 +141,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
               {slots.map((e) => (
-                <button key={e.id} onClick={() => openSlot(e)} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm text-left hover:bg-zinc-800/50 rounded-lg transition">
-                  <div className="w-20 text-zinc-500">{e.day} {e.date.slice(5)}</div>
-                  <div className="w-8 text-center text-accent">{e.glyph}</div>
-                  <div className="w-28 text-zinc-300 truncate">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
-                  <div className="flex-1 text-zinc-100">{e.pillar}</div>
-                  <span className={`text-xs rounded-full px-2 py-0.5 ${statusStyle(e.status)}`}>{e.status}</span>
-                </button>
+                <div key={e.id} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
+                  <button onClick={() => openSlot(e)} className="flex-1 flex items-center gap-3 text-left min-w-0">
+                    <div className="w-20 text-zinc-500 shrink-0">{e.day} {e.date.slice(5)}</div>
+                    <div className="w-8 text-center text-accent shrink-0">{e.glyph}</div>
+                    <div className="w-28 text-zinc-300 truncate shrink-0">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
+                    <div className="flex-1 text-zinc-100 truncate">{e.city ? e.pillar.replace(/\[city\]/i, e.city) : e.pillar}</div>
+                  </button>
+                  <span className={`text-xs rounded-full px-2 py-0.5 shrink-0 ${statusStyle(e.status)}`}>{e.status}</span>
+                  <button onClick={(ev) => delPost(e.id, ev)} className="text-zinc-600 hover:text-red-400 px-1.5 shrink-0" title="Delete post">✕</button>
+                </div>
               ))}
               {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
             </div>
@@ -205,7 +226,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
-                <div className="font-bold text-lg">{open.pillar}</div>
+                <div className="font-bold text-lg">{open.city ? open.pillar.replace(/\[city\]/i, open.city) : open.pillar}</div>
               </div>
               <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
             </div>
@@ -218,6 +239,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 </div>
                 <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} />
                 <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
+                <div className="flex items-center gap-2">
+                  <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 capitalize" title="Voice">
+                    {["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                  <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
+                </div>
+                {vo && <audio controls src={vo} className="w-full" />}
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">

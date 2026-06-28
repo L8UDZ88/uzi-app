@@ -67,6 +67,7 @@ model ScheduleItem {
   pillar    String
   channel   String
   format    String   @default("")
+  city      String?  // for "Now in [city]" posts — the specific city this post anchors to
   status    String   @default("queued") // queued | approved | ready | published | failed
   caption     String?  @db.Text          // snapshot of approved copy, for publishing
   mediaUrl    String?                     // generated/uploaded visual to publish

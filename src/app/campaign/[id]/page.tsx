@@ -19,6 +19,7 @@ export default async function CampaignPage({ params }: { params: { id: string } 
     pillar: s.pillar, channel: s.channel, format: (s as any).format || "",
     glyph: ({ LinkedIn: "in", X: "𝕏", YouTube: "▶", Instagram: "◎", Facebook: "f", TikTok: "♪", Podcast: "🎙" } as any)[s.channel] || "·",
     status: s.status,
+    city: (s as any).city || null,
     externalUrl: (s as any).externalUrl || null,
   }));
   return <Dashboard campaign={campaign} campaignId={campaign.id} slots={slots} />;

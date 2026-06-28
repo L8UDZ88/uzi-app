@@ -5,7 +5,7 @@
 
 import { generateDraft, Draft } from "./generate";
 
-type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string };
+type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string; city?: string };
 
 const MODEL = "claude-sonnet-4-6"; // swap to "claude-haiku-4-5-20251001" for cheaper, or "claude-opus-4-8" for top quality
 
@@ -41,6 +41,7 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
     `Brand voice: ${brand.voice || "warm, bold, concise, human"}. ` +
     (brand.tagline ? `Tagline (don't repeat it verbatim): "${brand.tagline}". ` : "") +
     (brand.region ? `Region: ${brand.region}. ` : "") +
+    (brand.city ? `This specific post ANNOUNCES AVAILABILITY IN ${brand.city.toUpperCase()} — anchor every line to ${brand.city} (its name, vibe, landmarks). Do not mention other cities. ` : "") +
     (src
       ? `\n\nGround every post in the brand's REAL source material below — use its facts, product names, claims, and phrasing. Do not invent facts that contradict it.\n<source_material>\n${src.slice(0, 9000)}\n</source_material>\n`
       : "") +

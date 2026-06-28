@@ -11,7 +11,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const slots = buildCalendar(c.pillars as any, c.channels as any, c.cadence, (c as any).campaignType);
   await prisma.scheduleItem.deleteMany({ where: { brandId: c.id } });
   await prisma.scheduleItem.createMany({
-    data: slots.map((s) => ({ brandId: c.id, date: new Date(s.date), pillar: s.pillar, channel: s.channel, format: s.format })),
+    data: slots.map((s) => ({ brandId: c.id, date: new Date(s.date), pillar: s.pillar, channel: s.channel, format: s.format, city: s.city || null })),
   });
   return NextResponse.json({ count: slots.length, slots });
 }
