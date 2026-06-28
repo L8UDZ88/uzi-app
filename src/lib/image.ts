@@ -32,7 +32,6 @@ async function tryModel(model: string, key: string, prompt: string, aspect?: str
         prompt,
         size: sizeFor(model, aspect),
         n: 1,
-        ...(model.startsWith("dall-e") ? { response_format: "b64_json" } : {}),
       }),
     });
   } catch (e: any) {
