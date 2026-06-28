@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
-import { generateVoiceover, ttsEnabled, voiceScript } from "@/lib/tts";
+import { generateVoiceover, generateElevenVoiceover, ttsEnabled, elevenEnabled, voiceScript, TTS_VOICES } from "@/lib/tts";
 
 // Generate a voiceover from a post's copy for preview/playback.
 export async function POST(req: Request) {
@@ -13,7 +13,9 @@ export async function POST(req: Request) {
   const { campaignId, text, voice } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const audio = await generateVoiceover(voiceScript(text || ""), voice || "alloy");
+  const script = voiceScript(text || "");
+  const useEleven = elevenEnabled() && voice && !TTS_VOICES.includes(voice);
+  const audio = useEleven ? await generateElevenVoiceover(script, voice) : await generateVoiceover(script, voice || "alloy");
   if (!audio) return NextResponse.json({ error: "Couldn't generate voiceover — try again." }, { status: 502 });
   return NextResponse.json({ audio });
 }

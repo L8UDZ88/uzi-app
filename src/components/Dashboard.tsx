@@ -22,6 +22,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [vo, setVo] = useState<string | null>(null);
   const [voBusy, setVoBusy] = useState(false);
   const [voVoice, setVoVoice] = useState("alloy");
+  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -33,6 +34,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     fetch(`/api/social/status?campaignId=${campaignId}`).then((x) => x.json()).then(setSocial).catch(() => {});
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("social")) setTab("deliver");
   }, [campaignId]);
+
+  useEffect(() => {
+    fetch("/api/voiceover/voices").then((x) => x.json()).then((d) => {
+      if (Array.isArray(d.voices) && d.voices.length) { setVoices(d.voices); setVoVoice(d.voices[0].id); }
+    }).catch(() => {});
+  }, []);
 
   const toggleAuto = async (on: boolean) => {
     setSocial({ ...social, autoDeliver: on });
@@ -240,8 +247,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} />
                 <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 <div className="flex items-center gap-2">
-                  <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 capitalize" title="Voice">
-                    {["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => <option key={v} value={v}>{v}</option>)}
+                  <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[45%] truncate" title="Voice">
+                    {(voices.length ? voices : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => ({ id: v, name: v }))).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                   <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
                 </div>
