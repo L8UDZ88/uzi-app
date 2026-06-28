@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { generateImage, imageEnabled } from "@/lib/image";
 
+export const maxDuration = 60; // image generation can take 15–30s
+
 // Generate a scene image for a post preview from its visual brief.
 export async function POST(req: Request) {
   const uid = await getUserId();
@@ -13,7 +15,7 @@ export async function POST(req: Request) {
   const { campaignId, brief, aspect } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const image = await generateImage(brief || "", { name: c.name, region: c.region, voice: c.voice }, aspect);
-  if (!image) return NextResponse.json({ error: "Couldn't generate an image — try again." }, { status: 502 });
+  const { image, error } = await generateImage(brief || "", { name: c.name, region: c.region, voice: c.voice }, aspect);
+  if (!image) return NextResponse.json({ error: error || "Couldn't generate an image — try again." }, { status: 502 });
   return NextResponse.json({ image });
 }
