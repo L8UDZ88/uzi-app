@@ -77,6 +77,14 @@ model ScheduleItem {
   createdAt DateTime @default(now())
 }
 
+// Short-lived generated media (e.g. voiceover mp3) served by URL so the render service can fetch it.
+model RenderAsset {
+  id        String   @id @default(cuid())
+  mime      String   @default("audio/mpeg")
+  data      String   @db.Text // base64
+  createdAt DateTime @default(now())
+}
+
 model Asset {
   id        String   @id @default(cuid())
   brandId   String

@@ -27,6 +27,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [clips, setClips] = useState<any[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState("");
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -72,7 +75,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
-    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null);
+    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus("");
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -87,6 +90,26 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const d = await res.json();
     setStockBusy(false);
     if (Array.isArray(d.clips)) setClips(d.clips); else alert(d.error || "Couldn't search stock.");
+  };
+  const genVideo = async () => {
+    if (!open || !draft) return;
+    setVideoBusy(true); setVideoUrl(null); setVideoStatus("starting…");
+    const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
+    const aspect = aspectFor(open.channel, open.format);
+    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline }) });
+    const d = await res.json();
+    if (!d.renderId) { setVideoBusy(false); setVideoStatus(""); alert(d.error || "Couldn't start render."); return; }
+    let tries = 0;
+    const poll = async () => {
+      tries++;
+      const s = await (await fetch(`/api/video/status?id=${d.renderId}`)).json();
+      setVideoStatus(s.status || "rendering…");
+      if (s.status === "done" && s.url) { setVideoUrl(s.url); setVideoBusy(false); return; }
+      if (s.status === "failed" || s.error) { setVideoBusy(false); setVideoStatus(""); alert(s.error || "Render failed."); return; }
+      if (tries > 50) { setVideoBusy(false); setVideoStatus(""); alert("Render is taking long — check back shortly."); return; }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 3000);
   };
   const delPost = async (id: string, e: any) => {
     e.stopPropagation();
@@ -285,9 +308,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                         ))}
                       </div>
                     )}
-                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips feed the video render (Stage 3). Pexels — free, commercial-use.</div>
+                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips feed the video render. Pexels — free, commercial-use.</div>
                   </div>
                 </details>
+                <Btn className="w-full" disabled={videoBusy} onClick={genVideo}>{videoBusy ? `Rendering… ${videoStatus}` : videoUrl ? "Re-render video 🎬" : "Generate video 🎬"}</Btn>
+                {videoUrl && (
+                  <div className="space-y-1">
+                    <video controls src={videoUrl} className="w-full rounded-xl bg-black" />
+                    <a href={videoUrl} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open / download MP4 ↗</a>
+                  </div>
+                )}
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">

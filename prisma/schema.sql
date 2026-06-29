@@ -68,6 +68,13 @@ CREATE TABLE "SocialConnection" (
 -- ALTER TABLE "ScheduleItem" ADD COLUMN IF NOT EXISTS "caption" TEXT, ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT,
 --   ADD COLUMN IF NOT EXISTS "publishedAt" TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS "externalUrl" TEXT, ADD COLUMN IF NOT EXISTS "publishError" TEXT;
 
+CREATE TABLE "RenderAsset" (
+  "id" TEXT PRIMARY KEY,
+  "mime" TEXT NOT NULL DEFAULT 'audio/mpeg',
+  "data" TEXT NOT NULL,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE "Asset" (
   "id" TEXT PRIMARY KEY,
   "brandId" TEXT NOT NULL REFERENCES "Brand"("id") ON DELETE CASCADE,
