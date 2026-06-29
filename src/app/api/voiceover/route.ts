@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const script = voiceScript(text || "");
   const useEleven = elevenEnabled() && voice && !TTS_VOICES.includes(voice);
-  const audio = useEleven ? await generateElevenVoiceover(script, voice) : await generateVoiceover(script, voice || "alloy");
-  if (!audio) return NextResponse.json({ error: "Couldn't generate voiceover — try again." }, { status: 502 });
-  return NextResponse.json({ audio });
+  const result = useEleven ? await generateElevenVoiceover(script, voice) : await generateVoiceover(script, voice || "alloy");
+  if (!result.audio) return NextResponse.json({ error: result.error || "Couldn't generate voiceover — try again." }, { status: 502 });
+  return NextResponse.json({ audio: result.audio });
 }

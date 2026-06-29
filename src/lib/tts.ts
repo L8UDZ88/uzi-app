@@ -35,9 +35,11 @@ export async function listVoices(): Promise<VoiceOption[]> {
 }
 
 // ElevenLabs TTS — multilingual model handles Italian/Sicilian with the right accent.
-export async function generateElevenVoiceover(text: string, voiceId: string): Promise<string | null> {
+export async function generateElevenVoiceover(text: string, voiceId: string): Promise<{ audio?: string; error?: string }> {
   const key = process.env.ELEVENLABS_API_KEY;
-  if (!key || !text.trim() || !voiceId) return null;
+  if (!key) return { error: "No ElevenLabs key." };
+  if (!text.trim()) return { error: "No script text." };
+  if (!voiceId) return { error: "No voice selected." };
   try {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
@@ -45,14 +47,21 @@ export async function generateElevenVoiceover(text: string, voiceId: string): Pr
       body: JSON.stringify({
         text: text.slice(0, 5000),
         model_id: process.env.ELEVEN_MODEL || "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true },
+        voice_settings: { stability: 0.5, similarity_boost: 0.8 },
       }),
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try {
+        const e: any = await r.json();
+        detail = e?.detail?.message || (typeof e?.detail === "string" ? e.detail : JSON.stringify(e).slice(0, 220));
+      } catch {}
+      return { error: `ElevenLabs: ${detail}` };
+    }
     const buf = Buffer.from(await r.arrayBuffer());
-    return `data:audio/mp3;base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
+    return { audio: `data:audio/mp3;base64,${buf.toString("base64")}` };
+  } catch (e: any) {
+    return { error: `ElevenLabs: ${String(e?.message || e)}` };
   }
 }
 
@@ -67,9 +76,10 @@ export function voiceScript(caption: string): string {
     .trim();
 }
 
-export async function generateVoiceover(text: string, voice = "alloy"): Promise<string | null> {
+export async function generateVoiceover(text: string, voice = "alloy"): Promise<{ audio?: string; error?: string }> {
   const key = process.env.OPENAI_API_KEY;
-  if (!key || !text.trim()) return null;
+  if (!key) return { error: "No OpenAI key." };
+  if (!text.trim()) return { error: "No script text." };
   try {
     const res = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
@@ -81,10 +91,14 @@ export async function generateVoiceover(text: string, voice = "alloy"): Promise<
         response_format: "mp3",
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const e: any = await res.json(); detail = e?.error?.message || detail; } catch {}
+      return { error: `OpenAI: ${detail}` };
+    }
     const buf = Buffer.from(await res.arrayBuffer());
-    return `data:audio/mp3;base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
+    return { audio: `data:audio/mp3;base64,${buf.toString("base64")}` };
+  } catch (e: any) {
+    return { error: `OpenAI: ${String(e?.message || e)}` };
   }
 }
