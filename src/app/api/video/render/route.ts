@@ -15,11 +15,10 @@ export async function POST(req: Request) {
   if (!renderEnabled()) {
     return NextResponse.json({ error: "Video render isn't enabled yet — add SHOTSTACK_API_KEY in Vercel." }, { status: 400 });
   }
-  const { campaignId, text, brief, voice, clipUrl, musicUrl, aspect, title, productId } = await req.json();
+  const { campaignId, text, brief, voice, clipUrl, musicUrl, aspect, title, productId, stillDataUrl } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const origin = new URL(req.url).origin;
-  const productUrl = productId ? `${origin}/api/product/${productId}` : undefined;
 
   // 1) Voiceover -> host it so the renderer can fetch it by URL.
   const script = voiceScript(text || "");
@@ -30,25 +29,36 @@ export async function POST(req: Request) {
     if (vo.audio) {
       const b64 = vo.audio.split(",")[1] || "";
       const asset = await prisma.renderAsset.create({ data: { mime: "audio/mpeg", data: b64 } });
-      voUrl = `${new URL(req.url).origin}/api/asset/${asset.id}`;
+      voUrl = `${origin}/api/asset/${asset.id}`;
     }
   }
 
-  // 2) Background clip: use the picked one, else auto-pick from stock by the brief's keywords.
-  let clip = clipUrl as string | undefined;
-  if (!clip) {
-    const q = keywordsFromBrief(brief || text || "") || c.region || "city";
-    const clips = await searchStock(q, aspect === "wide" ? "landscape" : "portrait");
-    clip = clips[0]?.download;
+  // 2) Background. PRIMARY: the on-brand still (product baked in) animated with a zoom.
+  //    FALLBACK: a stock clip + the product overlaid.
+  let stillUrl: string | undefined;
+  let clip: string | undefined;
+  let productUrl: string | undefined;
+  if (stillDataUrl && String(stillDataUrl).startsWith("data:")) {
+    const b64 = String(stillDataUrl).split(",")[1] || "";
+    const asset = await prisma.renderAsset.create({ data: { mime: "image/png", data: b64 } });
+    stillUrl = `${origin}/api/asset/${asset.id}`;
+  } else {
+    clip = clipUrl as string | undefined;
+    if (!clip) {
+      const q = keywordsFromBrief(brief || text || "") || c.region || "city";
+      const clips = await searchStock(q, aspect === "wide" ? "landscape" : "portrait");
+      clip = clips[0]?.download;
+    }
+    if (!clip) return NextResponse.json({ error: "Generate the image first (it becomes the video), or add PEXELS_API_KEY for stock." }, { status: 400 });
+    productUrl = productId ? `${origin}/api/product/${productId}` : undefined;
   }
-  if (!clip) return NextResponse.json({ error: "No stock clip available — pick one, or add PEXELS_API_KEY." }, { status: 400 });
 
   // 3) Length estimate from the script (speech ≈ 14 chars/sec), clamped.
   const length = Math.max(8, Math.min(40, Math.round((script.length || 120) / 14)));
   const vertical = aspect !== "wide";
 
   const timeline = buildTimeline({
-    clipUrl: clip, voUrl, musicUrl: musicUrl || undefined, productUrl,
+    stillUrl, clipUrl: clip, voUrl, musicUrl: musicUrl || undefined, productUrl,
     length, width: vertical ? 1080 : 1920, height: vertical ? 1920 : 1080, title: title || undefined,
   });
   const r = await shotstackRender(timeline);

@@ -101,10 +101,45 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   };
   const genVideo = async () => {
     if (!open || !draft) return;
-    setVideoBusy(true); setVideoUrl(null); setVideoStatus("starting…");
-    const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
+    setVideoBusy(true); setVideoUrl(null); setVideoStatus("preparing…");
     const aspect = aspectFor(open.channel, open.format);
-    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline, productId: productSel }) });
+    const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
+
+    let renderBody: any;
+    if (pickedClip) {
+      // Optional stock-clip path (product overlaid).
+      renderBody = { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, clipUrl: pickedClip, productId: productSel };
+    } else {
+      // Primary path: the on-brand still (product baked in) → animate it → render.
+      let still = image;
+      if (!still) {
+        setVideoStatus("generating image…");
+        const ir = await (await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect, productId: productSel }) })).json();
+        if (ir.image) { still = ir.image; setImage(ir.image); }
+        else { setVideoBusy(false); setVideoStatus(""); alert(ir.error || "Couldn't generate the image for the video."); return; }
+      }
+      // Try real motion (fal/Kling). If not enabled or it fails, fall back to the still + zoom.
+      let animatedClip: string | undefined;
+      try {
+        setVideoStatus("animating…");
+        const an = await (await fetch("/api/video/animate", { method: "POST", body: JSON.stringify({ campaignId, stillDataUrl: still, brief: editBrief || draft.visualBrief }) })).json();
+        if (an.statusUrl && an.responseUrl) {
+          for (let i = 0; i < 60 && !animatedClip; i++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            const st = await (await fetch(`/api/video/animate?statusUrl=${encodeURIComponent(an.statusUrl)}&responseUrl=${encodeURIComponent(an.responseUrl)}`)).json();
+            setVideoStatus(`animating… ${(st.status || "").toLowerCase()}`);
+            if (st.videoUrl) animatedClip = st.videoUrl;
+            else if (st.error) break;
+          }
+        }
+      } catch { /* fall back to zoom */ }
+      renderBody = animatedClip
+        ? { campaignId, text: draft.caption, voice: voVoice, aspect, title: draft.headline, clipUrl: animatedClip }
+        : { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, stillDataUrl: still };
+    }
+
+    setVideoStatus("rendering…");
+    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify(renderBody) });
     const d = await res.json();
     if (!d.renderId) { setVideoBusy(false); setVideoStatus(""); alert(d.error || "Couldn't start render."); return; }
     let tries = 0;
@@ -121,27 +156,15 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   };
   const exportStill = async () => {
     if (!open || !image) { alert("Generate a visual first."); return; }
-    const asp = aspectFor(open.channel, open.format);
-    const [w, h] = asp === "vertical" ? [1080, 1920] : asp === "wide" ? [1920, 1080] : (asp === "feed" || asp === "carousel") ? [1080, 1350] : [1080, 1080];
-    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = rej; im.src = src; });
     try {
-      const scene = await load(image);
-      const r = Math.max(w / scene.width, h / scene.height);
-      const sw = scene.width * r, sh = scene.height * r;
-      ctx.drawImage(scene, (w - sw) / 2, (h - sh) / 2, sw, sh);
-      if (productUrl) {
-        const prod = await load(productUrl);
-        const ph = h * 0.6, pw = prod.width * (ph / prod.height);
-        ctx.drawImage(prod, w - pw - w * 0.04, h - ph - h * 0.06, pw, ph);
-      }
+      let href = image;
+      if (!image.startsWith("data:")) href = URL.createObjectURL(await (await fetch(image)).blob());
       const a = document.createElement("a");
-      a.href = canvas.toDataURL("image/png");
+      a.href = href;
       a.download = `${(open.pillar || "post").replace(/\W+/g, "_")}_${open.channel}.png`;
       a.click();
     } catch {
-      alert("Couldn't export — the generated image may block cross-origin export. Regenerate the visual and try again.");
+      alert("Couldn't export — try regenerating the visual.");
     }
   };
   const delPost = async (id: string, e: any) => {
@@ -154,7 +177,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const genImage = async () => {
     if (!open || !draft) return;
     setImgBusy(true);
-    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format) }) });
+    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format), productId: productSel }) });
     const d = await res.json();
     setImgBusy(false);
     if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image.");
@@ -336,8 +359,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
                 </div>
                 {vo && <audio controls src={vo} className="w-full" />}
+                {["reel", "story", "short", "video", "long"].includes((open.format || "").toLowerCase()) && (<>
+                <Btn className="w-full" disabled={videoBusy} onClick={genVideo}>{videoBusy ? `Working… ${videoStatus}` : videoUrl ? "Re-make video 🎬" : "Make video (image → motion) 🎬"}</Btn>
+                {videoUrl && (
+                  <div className="space-y-1">
+                    <video controls src={videoUrl} className="w-full rounded-xl bg-black" />
+                    <a href={videoUrl} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open / download MP4 ↗</a>
+                  </div>
+                )}
                 <details className="text-sm">
-                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Stock footage 🎞</summary>
+                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Optional: use a stock clip instead of the still 🎞</summary>
                   <div className="mt-2 space-y-2">
                     <div className="flex gap-2">
                       <input value={stockQ} onChange={(e) => setStockQ(e.target.value)} placeholder="Search clips…" className="flex-1 bg-zinc-800 rounded-lg px-3 py-2 text-sm" />
@@ -353,16 +384,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                         ))}
                       </div>
                     )}
-                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips feed the video render. Pexels — free, commercial-use.</div>
+                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips replace the still as the video base. Pexels — free, commercial-use.</div>
                   </div>
                 </details>
-                <Btn className="w-full" disabled={videoBusy} onClick={genVideo}>{videoBusy ? `Rendering… ${videoStatus}` : videoUrl ? "Re-render video 🎬" : "Generate video 🎬"}</Btn>
-                {videoUrl && (
-                  <div className="space-y-1">
-                    <video controls src={videoUrl} className="w-full rounded-xl bg-black" />
-                    <a href={videoUrl} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open / download MP4 ↗</a>
-                  </div>
-                )}
+                </>)}
                 <details className="text-sm">
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">
@@ -379,7 +404,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
                   <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
                 </div>
-                <div className="text-xs text-zinc-600">{image ? "AI scene draft — composite your real product on top before publishing (the brand never lets AI redraw the product)." : "Caption & layout are real. Click “Generate visual” to render a scene from the brief (needs the image key in Vercel)."}</div>
+                <div className="text-xs text-zinc-600">{image ? "Your real product is rendered into the scene. Edit the brief above and regenerate to change it, or pick a different product." : "Pick a product, then “Generate visual” renders a scene built around your real product (needs the OpenAI image key)."}</div>
               </div>
             )}
           </div>

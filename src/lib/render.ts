@@ -9,10 +9,11 @@ const ENV = process.env.SHOTSTACK_ENV || "stage";
 const BASE = `https://api.shotstack.io/${ENV}`;
 
 type TimelineOpts = {
-  clipUrl: string;
+  stillUrl?: string;   // the generated on-brand still (product baked in) — primary path
+  clipUrl?: string;    // a stock video clip — fallback path
   voUrl?: string;
   musicUrl?: string;
-  productUrl?: string;
+  productUrl?: string; // only overlaid in the stock-clip path
   length: number;
   width: number;
   height: number;
@@ -31,19 +32,22 @@ export function buildTimeline(o: TimelineOpts) {
       }],
     });
   }
-  // Real product, composited bottom-right (never AI-drawn) — above the video
-  if (o.productUrl) {
+  if (o.stillUrl) {
+    // PRIMARY: animate the on-brand still with a slow zoom (product already in the image).
     tracks.push({
-      clips: [{
-        asset: { type: "image", src: o.productUrl },
-        start: 0, length: o.length, fit: "none", scale: 0.45, position: "bottomRight", offset: { x: -0.04, y: 0.06 },
-      }],
+      clips: [{ asset: { type: "image", src: o.stillUrl }, start: 0, length: o.length, effect: "zoomIn", fit: "cover" }],
+    });
+  } else {
+    // FALLBACK: stock clip background + real product overlaid bottom-right.
+    if (o.productUrl) {
+      tracks.push({
+        clips: [{ asset: { type: "image", src: o.productUrl }, start: 0, length: o.length, fit: "none", scale: 0.45, position: "bottomRight", offset: { x: -0.04, y: 0.06 } }],
+      });
+    }
+    tracks.push({
+      clips: [{ asset: { type: "video", src: o.clipUrl }, start: 0, length: o.length, fit: "cover" }],
     });
   }
-  // Background video (the stock clip), cover-cropped to the output size
-  tracks.push({
-    clips: [{ asset: { type: "video", src: o.clipUrl }, start: 0, length: o.length, fit: "cover" }],
-  });
   // Voiceover
   if (o.voUrl) tracks.push({ clips: [{ asset: { type: "audio", src: o.voUrl }, start: 0, length: o.length }] });
   // Music bed, ducked under the voiceover

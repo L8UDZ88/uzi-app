@@ -62,8 +62,9 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
     (brand.region ? `Setting and mood: ${brand.region}. ` : "") +
     `Scene: ${brief}. ` +
     (brand.donts ? `Avoid: ${brand.donts}. ` : "") +
-    `Premium, authentic, natural light. No text, no logos, no watermarks, no product packaging with readable labels (the real product is composited in afterward). ` +
-    `Leave clean negative space so the product and caption can be overlaid.`;
+    `Do NOT include any drinks, cans, bottles, or glasses in the scene — the product is added separately. ` +
+    `Premium, authentic, natural light. No text, no logos, no watermarks. ` +
+    `Leave clean negative space so the product and caption can be placed.`;
   const errors: string[] = [];
   for (const model of modelChain()) {
     const r = await tryModel(model, key, prompt, aspect);
@@ -71,4 +72,46 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
     errors.push(r.error || `${model}: unknown error`);
   }
   return { image: null, error: errors.join(" | ") };
+}
+
+// Generate the scene WITH the real product placed in it, by giving gpt-image-1 the product
+// PNG as an input image. The model builds the scene around the actual product — aligned,
+// scaled, and lit — so there's no overlay/misalignment and no AI-invented duplicate can.
+export async function generateImageWithProduct(
+  brief: string, brand: Brand, aspect: string | undefined, product: { buffer: Buffer; mime: string }
+): Promise<{ image: string | null; error?: string }> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { image: null, error: "No OPENAI_API_KEY set." };
+  const prompt =
+    `Photorealistic editorial brand photo${brand.name ? ` for ${brand.name}` : ""}. ` +
+    `Integrate the EXACT product shown in the provided image into a scene — keep its can/label/design unchanged; do NOT redraw, restyle, or relabel it. ` +
+    (brand.product ? `The product: ${brand.product}. ` : "") +
+    `Scene: ${brief}. ` +
+    (brand.region ? `Setting/mood: ${brand.region}. ` : "") +
+    (brand.donts ? `Avoid: ${brand.donts}. ` : "") +
+    `Match the scene's lighting, shadows, and perspective to the product so it sits naturally in the world. ` +
+    `Do NOT add any other drinks, cans, bottles, or glasses. No text, no logos, no watermarks. Leave negative space for caption text.`;
+  try {
+    const form = new FormData();
+    form.append("model", "gpt-image-1");
+    form.append("prompt", prompt);
+    form.append("size", sizeFor("gpt-image-1", aspect));
+    form.append("image", new Blob([new Uint8Array(product.buffer)], { type: product.mime || "image/png" }), "product.png");
+    const r = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}` },
+      body: form,
+    });
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try { const e: any = await r.json(); detail = e?.error?.message || detail; } catch {}
+      return { image: null, error: `gpt-image-1 (product): ${detail}` };
+    }
+    const data: any = await r.json();
+    const b64 = data?.data?.[0]?.b64_json;
+    if (b64) return { image: `data:image/png;base64,${b64}` };
+    return { image: data?.data?.[0]?.url || null, error: data?.data?.[0]?.url ? undefined : "no image returned" };
+  } catch (e: any) {
+    return { image: null, error: `gpt-image-1 (product): ${String(e?.message || e)}` };
+  }
 }
