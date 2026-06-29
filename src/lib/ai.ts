@@ -5,7 +5,13 @@
 
 import { generateDraft, Draft } from "./generate";
 
-type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string; city?: string };
+type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string; city?: string; product?: string; phrases?: string; donts?: string; language?: string };
+
+function languageRule(lang?: string): string {
+  if (lang === "it") return "Write ALL copy in Italian.";
+  if (lang === "bilingual") return "Write the caption in BOTH languages: English first, then the Italian translation directly below it.";
+  return "Write ALL copy in English (unless a proper noun or signature phrase is in another language).";
+}
 
 const MODEL = "claude-sonnet-4-6"; // swap to "claude-haiku-4-5-20251001" for cheaper, or "claude-opus-4-8" for top quality
 
@@ -38,9 +44,13 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
   const src = (brand.sourceText || "").trim();
   const system =
     `You are the senior social copywriter for ${brand.name || "the brand"}. ` +
+    `${languageRule(brand.language)} ` +
+    (brand.product ? `THE PRODUCT (every post is about this specific product — never invent other drinks, dishes, or generic items): ${brand.product}. ` : "") +
     `Brand voice: ${brand.voice || "warm, bold, concise, human"}. ` +
     (brand.tagline ? `Tagline (don't repeat it verbatim): "${brand.tagline}". ` : "") +
-    (brand.region ? `Region: ${brand.region}. ` : "") +
+    (brand.phrases ? `Weave in these signature phrases naturally where they fit: ${brand.phrases}. ` : "") +
+    (brand.donts ? `HARD RULES — never do any of these: ${brand.donts}. ` : "") +
+    (brand.region ? `Region/world: ${brand.region}. ` : "") +
     (brand.city ? `This specific post ANNOUNCES AVAILABILITY IN ${brand.city.toUpperCase()} — anchor every line to ${brand.city} (its name, vibe, landmarks). Do not mention other cities. ` : "") +
     (src
       ? `\n\nGround every post in the brand's REAL source material below — use its facts, product names, claims, and phrasing. Do not invent facts that contradict it.\n<source_material>\n${src.slice(0, 9000)}\n</source_material>\n`

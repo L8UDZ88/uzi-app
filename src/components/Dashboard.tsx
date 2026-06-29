@@ -30,6 +30,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState("");
+  const [editBrief, setEditBrief] = useState("");
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -79,6 +80,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
+    setEditBrief(d.draft?.visualBrief || "");
     const kw = String(d.draft?.visualBrief || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 3).slice(0, 4).join(" ");
     setStockQ(kw || campaign.region || "");
   };
@@ -96,7 +98,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setVideoBusy(true); setVideoUrl(null); setVideoStatus("starting…");
     const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
     const aspect = aspectFor(open.channel, open.format);
-    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline }) });
+    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline }) });
     const d = await res.json();
     if (!d.renderId) { setVideoBusy(false); setVideoStatus(""); alert(d.error || "Couldn't start render."); return; }
     let tries = 0;
@@ -121,7 +123,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const genImage = async () => {
     if (!open || !draft) return;
     setImgBusy(true);
-    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: draft.visualBrief, aspect: aspectFor(open.channel, open.format) }) });
+    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format) }) });
     const d = await res.json();
     setImgBusy(false);
     if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image.");
@@ -322,7 +324,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
                   <div className="mt-3 space-y-3">
                     <Card className="p-3"><div className="text-xs text-zinc-500 mb-1">Headline</div><div className="font-semibold text-zinc-100">{draft.headline}</div></Card>
-                    <Card className="p-3"><div className="text-xs text-zinc-500 mb-1">Visual brief</div><div className="text-sm text-zinc-300">{draft.visualBrief}</div></Card>
+                    <Card className="p-3">
+                      <div className="text-xs text-zinc-500 mb-1">Visual brief — edit this, then “Generate visual / video” uses your version</div>
+                      <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={3} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                    </Card>
                     <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
                   </div>
                 </details>

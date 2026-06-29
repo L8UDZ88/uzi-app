@@ -111,6 +111,20 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
             <input placeholder={isDigital ? "Category / ICP (e.g. B2B SaaS, ops teams)" : "Region (e.g. Sicily)"} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.region || ""} onChange={(e) => u({ region: e.target.value })} />
             <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
           </div>
+          <div className="mt-5">
+            <div className="text-sm font-semibold text-zinc-200">Brand kit — keeps every generation on-brand</div>
+            <div className="grid sm:grid-cols-2 gap-3 mt-2">
+              <select value={cfg.inputs?.brandKit?.language || "en"} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), language: e.target.value } } })} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm">
+                <option value="en">Language: English</option>
+                <option value="it">Language: Italian</option>
+                <option value="bilingual">Language: Bilingual (EN + IT)</option>
+              </select>
+              <input placeholder="Signature phrases (comma-sep)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.inputs?.brandKit?.phrases || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), phrases: e.target.value } } })} />
+              <textarea placeholder="What is the product, exactly? (e.g. Blue Kamikaze — a blue ready-to-drink Sicilian cocktail, 6% ABV, slim can)" rows={2} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.product || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), product: e.target.value } } })} />
+              <input placeholder="Never do… (e.g. never depict a restaurant/menu; never AI-draw the can)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.donts || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), donts: e.target.value } } })} />
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">These force every caption, voiceover, and image to stay on-brand and in the right language.</p>
+          </div>
         </Card>
       )}
 

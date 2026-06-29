@@ -15,7 +15,8 @@ export async function POST(req: Request) {
   const { campaignId, brief, aspect } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const { image, error } = await generateImage(brief || "", { name: c.name, region: c.region, voice: c.voice }, aspect);
+  const bk = ((c.inputs as any) || {}).brandKit || {};
+  const { image, error } = await generateImage(brief || "", { name: c.name, region: c.region, voice: c.voice, product: bk.product || "", donts: bk.donts || "" }, aspect);
   if (!image) return NextResponse.json({ error: error || "Couldn't generate an image — try again." }, { status: 502 });
   return NextResponse.json({ image });
 }

@@ -4,7 +4,7 @@
 // Brand rule: AI renders SCENES / backgrounds with clean negative space — it must NOT redraw
 // the product. Real product art (transparent PNGs) is composited on top in a later step.
 
-type Brand = { name?: string; region?: string; voice?: string };
+type Brand = { name?: string; region?: string; voice?: string; product?: string; donts?: string };
 
 export function imageEnabled(): boolean {
   return !!process.env.OPENAI_API_KEY;
@@ -58,10 +58,12 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
   if (!brief.trim()) return { image: null, error: "No visual brief to render." };
   const prompt =
     `Editorial brand photography for ${brand.name || "a modern lifestyle brand"}. ` +
+    (brand.product ? `This is marketing for: ${brand.product}. Choose a scene that fits this product — do not default to a restaurant/menu setting unless that's clearly appropriate. ` : "") +
     (brand.region ? `Setting and mood: ${brand.region}. ` : "") +
     `Scene: ${brief}. ` +
-    `Premium, authentic, natural light. No text, no logos, no watermarks, no product packaging with readable labels. ` +
-    `Leave clean negative space so caption text can be overlaid.`;
+    (brand.donts ? `Avoid: ${brand.donts}. ` : "") +
+    `Premium, authentic, natural light. No text, no logos, no watermarks, no product packaging with readable labels (the real product is composited in afterward). ` +
+    `Leave clean negative space so the product and caption can be overlaid.`;
   const errors: string[] = [];
   for (const model of modelChain()) {
     const r = await tryModel(model, key, prompt, aspect);
