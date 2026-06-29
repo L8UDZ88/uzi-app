@@ -31,6 +31,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState("");
   const [editBrief, setEditBrief] = useState("");
+  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [productSel, setProductSel] = useState<string | null>(null);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -47,7 +49,11 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     fetch("/api/voiceover/voices").then((x) => x.json()).then((d) => {
       if (Array.isArray(d.voices) && d.voices.length) { setVoices(d.voices); setVoVoice(d.voices[0].id); }
     }).catch(() => {});
-  }, []);
+    fetch(`/api/products?campaignId=${campaignId}`).then((x) => x.json()).then((d) => {
+      const ps = d.products || []; setProducts(ps); if (ps.length) setProductSel(ps[0].id);
+    }).catch(() => {});
+  }, [campaignId]);
+  const productUrl = productSel ? `/api/product/${productSel}` : undefined;
 
   const toggleAuto = async (on: boolean) => {
     setSocial({ ...social, autoDeliver: on });
@@ -98,7 +104,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setVideoBusy(true); setVideoUrl(null); setVideoStatus("starting…");
     const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
     const aspect = aspectFor(open.channel, open.format);
-    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline }) });
+    const res = await fetch("/api/video/render", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, clipUrl: pickedClip, aspect, title: draft.headline, productId: productSel }) });
     const d = await res.json();
     if (!d.renderId) { setVideoBusy(false); setVideoStatus(""); alert(d.error || "Couldn't start render."); return; }
     let tries = 0;
@@ -112,6 +118,31 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       setTimeout(poll, 3000);
     };
     setTimeout(poll, 3000);
+  };
+  const exportStill = async () => {
+    if (!open || !image) { alert("Generate a visual first."); return; }
+    const asp = aspectFor(open.channel, open.format);
+    const [w, h] = asp === "vertical" ? [1080, 1920] : asp === "wide" ? [1920, 1080] : (asp === "feed" || asp === "carousel") ? [1080, 1350] : [1080, 1080];
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = rej; im.src = src; });
+    try {
+      const scene = await load(image);
+      const r = Math.max(w / scene.width, h / scene.height);
+      const sw = scene.width * r, sh = scene.height * r;
+      ctx.drawImage(scene, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      if (productUrl) {
+        const prod = await load(productUrl);
+        const ph = h * 0.6, pw = prod.width * (ph / prod.height);
+        ctx.drawImage(prod, w - pw - w * 0.04, h - ph - h * 0.06, pw, ph);
+      }
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = `${(open.pillar || "post").replace(/\W+/g, "_")}_${open.channel}.png`;
+      a.click();
+    } catch {
+      alert("Couldn't export — the generated image may block cross-origin export. Regenerate the visual and try again.");
+    }
   };
   const delPost = async (id: string, e: any) => {
     e.stopPropagation();
@@ -284,7 +315,19 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <div className="text-xs text-zinc-500">Preview · how it'll post</div>
                   <span className={`text-[10px] rounded-full px-2 py-0.5 ${usedAI ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{usedAI ? "✨ AI copy" : "Template copy"}</span>
                 </div>
-                <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} />
+                <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} productUrl={productUrl} />
+                {products.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-zinc-500">Product:</span>
+                    <button onClick={() => setProductSel(null)} className={`text-xs rounded-lg px-2 py-1 border ${!productSel ? "border-lime-400 text-accent" : "border-zinc-700 text-zinc-400"}`}>None</button>
+                    {products.map((p) => (
+                      <button key={p.id} onClick={() => setProductSel(p.id)} className={`w-9 h-9 rounded-lg border overflow-hidden ${productSel === p.id ? "border-lime-400" : "border-zinc-700"}`} title={p.name}>
+                        <img src={`/api/product/${p.id}`} alt="" className="w-full h-full object-contain" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {products.length === 0 && <div className="text-[11px] text-zinc-600">Tip: upload your product (transparent PNG) in Edit setup → Inputs to composite it into shots.</div>}
                 <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 <div className="flex items-center gap-2">
                   <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[45%] truncate" title="Voice">
@@ -331,6 +374,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
                   </div>
                 </details>
+                {image && <Btn kind="ghost" className="w-full text-sm" onClick={exportStill}>Export image (PNG) ⬇</Btn>}
                 <div className="flex gap-2 pt-2">
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
                   <Btn onClick={approve} className="flex-1">Approve ✓</Btn>

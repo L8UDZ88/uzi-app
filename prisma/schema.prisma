@@ -56,6 +56,7 @@ model Brand {
   autoDeliver Boolean @default(false) // when true, approved posts auto-publish on schedule
   schedule  ScheduleItem[]
   assets    Asset[]
+  products  ProductImage[]
   updatedAt DateTime @updatedAt
 }
 
@@ -74,6 +75,16 @@ model ScheduleItem {
   publishedAt DateTime?
   externalUrl String?                     // link to the live post
   publishError String?
+  createdAt DateTime @default(now())
+}
+
+// Uploaded transparent product images (per campaign), composited onto scenes.
+model ProductImage {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name      String   @default("product")
+  data      String   @db.Text // base64 PNG
   createdAt DateTime @default(now())
 }
 

@@ -15,6 +15,8 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const [folders, setFolders] = useState<any[]>([]);
   const [folderQ, setFolderQ] = useState("");
   const [driveBusy, setDriveBusy] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+  const [prodBusy, setProdBusy] = useState(false);
 
   useEffect(() => {
     fetch(`/api/campaigns/${campaignId}`).then((x) => x.json()).then((d) => {
@@ -27,9 +29,26 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       setLoaded(true);
     });
     fetch(`/api/google/status?campaignId=${campaignId}`).then((x) => x.json()).then(setDrive).catch(() => {});
+    fetch(`/api/products?campaignId=${campaignId}`).then((x) => x.json()).then((d) => setProducts(d.products || [])).catch(() => {});
     // Returning from Google OAuth lands here with ?drive=... — jump to the Inputs step.
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(2);
   }, [campaignId]);
+
+  const uploadProduct = (file?: File) => {
+    if (!file) return;
+    setProdBusy(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const d = await (await fetch("/api/products", { method: "POST", body: JSON.stringify({ campaignId, name: file.name, dataUrl: reader.result }) })).json();
+      setProdBusy(false);
+      if (d.id) setProducts((p) => [{ id: d.id, name: d.name }, ...p]);
+    };
+    reader.readAsDataURL(file);
+  };
+  const delProduct = async (id: string) => {
+    await fetch(`/api/products?id=${id}`, { method: "DELETE" });
+    setProducts((p) => p.filter((x) => x.id !== id));
+  };
 
   // When connected but no folder chosen yet, preload root folders for the picker.
   useEffect(() => {
@@ -170,6 +189,23 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop docs, screenshots, logos, copy"}</div>
               <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
             </label>
+          </div>
+
+          <div className="mt-5">
+            <div className="text-sm font-semibold text-zinc-200">Product images (transparent PNG)</div>
+            <div className="text-zinc-400 text-sm">Upload your product cut out on a transparent background. Uzi composites it into the scenes — the real product, never AI-drawn.</div>
+            <div className="flex flex-wrap gap-3 mt-3">
+              {products.map((p) => (
+                <div key={p.id} className="relative w-20 h-20 rounded-lg border border-zinc-700 bg-[conic-gradient(#27272a_90deg,#18181b_90deg_180deg,#27272a_180deg_270deg,#18181b_270deg)] bg-[length:16px_16px] overflow-hidden">
+                  <img src={`/api/product/${p.id}`} alt={p.name} className="w-full h-full object-contain" />
+                  <button onClick={() => delProduct(p.id)} className="absolute top-0.5 right-0.5 text-[10px] bg-black/70 text-white rounded px-1">✕</button>
+                </div>
+              ))}
+              <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
+                {prodBusy ? "…" : "+"}
+                <input type="file" accept="image/png" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0])} />
+              </label>
+            </div>
           </div>
         </Card>
       )}

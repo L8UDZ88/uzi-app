@@ -9,8 +9,8 @@ import type { Aspect } from "@/lib/constants";
 type Draft = { headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
 export default function PostPreview({
-  channel, format, aspect, draft, handle, imageUrl,
-}: { channel: string; format?: string; aspect?: Aspect; draft: Draft; handle?: string; imageUrl?: string }) {
+  channel, format, aspect, draft, handle, imageUrl, productUrl,
+}: { channel: string; format?: string; aspect?: Aspect; draft: Draft; handle?: string; imageUrl?: string; productUrl?: string }) {
   const h = (handle || "@yourbrand").replace(/^@/, "");
   const initial = (h[0] || "U").toUpperCase();
   const asp: Aspect = aspect || "feed";
@@ -44,7 +44,8 @@ export default function PostPreview({
               </div>
             </div>
           )}
-          <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
+          {productUrl && <img src={productUrl} alt="" className="absolute bottom-[20%] right-3 h-[52%] object-contain drop-shadow-2xl z-[1]" />}
+          <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/70 to-transparent z-[2]">
             <div className="text-sm font-medium leading-snug line-clamp-3">{draft.caption}</div>
             <div className="mt-2 inline-block text-xs font-semibold bg-white text-zinc-900 rounded-full px-3 py-1">{draft.cta}</div>
           </div>
@@ -82,6 +83,7 @@ export default function PostPreview({
           <div className="text-sm text-zinc-600 max-w-xs mx-auto leading-snug">{draft.visualBrief}</div>
         </div>
       )}
+      {productUrl && <img src={productUrl} alt="" className="absolute bottom-2 right-2 h-[62%] object-contain drop-shadow-2xl" />}
       {isCarousel && (
         <>
           <div className="absolute top-2 right-3 text-xs bg-black/60 text-white rounded-full px-2 py-0.5">1/5</div>

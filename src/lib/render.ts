@@ -12,6 +12,7 @@ type TimelineOpts = {
   clipUrl: string;
   voUrl?: string;
   musicUrl?: string;
+  productUrl?: string;
   length: number;
   width: number;
   height: number;
@@ -19,13 +20,23 @@ type TimelineOpts = {
 };
 
 export function buildTimeline(o: TimelineOpts) {
+  // Track order = layer order (first track is on top).
   const tracks: any[] = [];
-  // Title/hook overlay (first few seconds)
+  // Title/hook overlay (first few seconds) — top layer
   if (o.title) {
     tracks.push({
       clips: [{
         asset: { type: "title", text: o.title.slice(0, 120), style: "minimal", size: "medium", position: "center" },
         start: 0, length: Math.min(3.5, o.length), transition: { in: "fade", out: "fade" },
+      }],
+    });
+  }
+  // Real product, composited bottom-right (never AI-drawn) — above the video
+  if (o.productUrl) {
+    tracks.push({
+      clips: [{
+        asset: { type: "image", src: o.productUrl },
+        start: 0, length: o.length, fit: "none", scale: 0.45, position: "bottomRight", offset: { x: -0.04, y: 0.06 },
       }],
     });
   }
