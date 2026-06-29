@@ -30,8 +30,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState("");
+  const [music, setMusic] = useState<string | null>(null);
+  const [musicBusy, setMusicBusy] = useState(false);
   const [editBrief, setEditBrief] = useState("");
-  const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
+  const [products, setProducts] = useState<{ id: string; name: string; kind?: string }[]>([]);
   const [productSel, setProductSel] = useState<string | null>(null);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
@@ -50,10 +52,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       if (Array.isArray(d.voices) && d.voices.length) { setVoices(d.voices); setVoVoice(d.voices[0].id); }
     }).catch(() => {});
     fetch(`/api/products?campaignId=${campaignId}`).then((x) => x.json()).then((d) => {
-      const ps = d.products || []; setProducts(ps); if (ps.length) setProductSel(ps[0].id);
+      const ps = d.products || []; setProducts(ps);
+      const firstProduct = ps.find((p: any) => p.kind !== "logo");
+      if (firstProduct) setProductSel(firstProduct.id);
     }).catch(() => {});
   }, [campaignId]);
   const productUrl = productSel ? `/api/product/${productSel}` : undefined;
+  const productList = products.filter((p) => p.kind !== "logo");
 
   const toggleAuto = async (on: boolean) => {
     setSocial({ ...social, autoDeliver: on });
@@ -82,7 +87,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
-    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus("");
+    setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -108,7 +113,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     let renderBody: any;
     if (pickedClip) {
       // Optional stock-clip path (product overlaid).
-      renderBody = { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, clipUrl: pickedClip, productId: productSel };
+      renderBody = { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, clipUrl: pickedClip, productId: productSel, musicUrl: music || undefined };
     } else {
       // Primary path: the on-brand still (product baked in) → animate it → render.
       let still = image;
@@ -134,8 +139,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         }
       } catch { /* fall back to zoom */ }
       renderBody = animatedClip
-        ? { campaignId, text: draft.caption, voice: voVoice, aspect, title: draft.headline, clipUrl: animatedClip }
-        : { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, stillDataUrl: still };
+        ? { campaignId, text: draft.caption, voice: voVoice, aspect, title: draft.headline, clipUrl: animatedClip, loopSeg: 10, musicUrl: music || undefined }
+        : { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, stillDataUrl: still, musicUrl: music || undefined };
     }
 
     setVideoStatus("rendering…");
@@ -153,6 +158,19 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       setTimeout(poll, 3000);
     };
     setTimeout(poll, 3000);
+  };
+  const genMusic = async () => {
+    if (!open) return;
+    setMusicBusy(true); setMusic(null);
+    const an = await (await fetch("/api/music", { method: "POST", body: JSON.stringify({ campaignId, mood: campaign.voice }) })).json();
+    if (!an.statusUrl || !an.responseUrl) { setMusicBusy(false); alert(an.error || "Couldn't start the music."); return; }
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const st = await (await fetch(`/api/music?statusUrl=${encodeURIComponent(an.statusUrl)}&responseUrl=${encodeURIComponent(an.responseUrl)}`)).json();
+      if (st.audioUrl) { setMusic(st.audioUrl); setMusicBusy(false); return; }
+      if (st.error) { setMusicBusy(false); alert(st.error); return; }
+    }
+    setMusicBusy(false); alert("Music is taking a while — try again.");
   };
   const exportStill = async () => {
     if (!open || !image) { alert("Generate a visual first."); return; }
@@ -339,18 +357,18 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <span className={`text-[10px] rounded-full px-2 py-0.5 ${usedAI ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{usedAI ? "✨ AI copy" : "Template copy"}</span>
                 </div>
                 <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} productUrl={productUrl} />
-                {products.length > 0 && (
+                {productList.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-zinc-500">Product:</span>
                     <button onClick={() => setProductSel(null)} className={`text-xs rounded-lg px-2 py-1 border ${!productSel ? "border-lime-400 text-accent" : "border-zinc-700 text-zinc-400"}`}>None</button>
-                    {products.map((p) => (
+                    {productList.map((p) => (
                       <button key={p.id} onClick={() => setProductSel(p.id)} className={`w-9 h-9 rounded-lg border overflow-hidden ${productSel === p.id ? "border-lime-400" : "border-zinc-700"}`} title={p.name}>
                         <img src={`/api/product/${p.id}`} alt="" className="w-full h-full object-contain" />
                       </button>
                     ))}
                   </div>
                 )}
-                {products.length === 0 && <div className="text-[11px] text-zinc-600">Tip: upload your product (transparent PNG) in Edit setup → Inputs to composite it into shots.</div>}
+                {productList.length === 0 && <div className="text-[11px] text-zinc-600">Tip: upload your product (transparent PNG) in Edit setup → Inputs to render it into shots. Logos auto-infuse.</div>}
                 <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 <div className="flex items-center gap-2">
                   <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[45%] truncate" title="Voice">
@@ -360,7 +378,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 </div>
                 {vo && <audio controls src={vo} className="w-full" />}
                 {["reel", "story", "short", "video", "long"].includes((open.format || "").toLowerCase()) && (<>
+                <div className="flex items-center gap-2">
+                  <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
+                </div>
+                {music && <audio controls src={music} className="w-full" />}
                 <Btn className="w-full" disabled={videoBusy} onClick={genVideo}>{videoBusy ? `Working… ${videoStatus}` : videoUrl ? "Re-make video 🎬" : "Make video (image → motion) 🎬"}</Btn>
+                <div className="text-[11px] text-zinc-600">Make video lays your voiceover + music over the visual (music ducked under the voice).</div>
                 {videoUrl && (
                   <div className="space-y-1">
                     <video controls src={videoUrl} className="w-full rounded-xl bg-black" />

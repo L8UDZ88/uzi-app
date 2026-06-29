@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const campaignId = new URL(req.url).searchParams.get("campaignId") || "";
   if (!(await owns(uid, campaignId))) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const products = await prisma.productImage.findMany({ where: { brandId: campaignId }, orderBy: { createdAt: "desc" }, select: { id: true, name: true } });
+  const products = await prisma.productImage.findMany({ where: { brandId: campaignId }, orderBy: { createdAt: "desc" }, select: { id: true, name: true, kind: true } });
   return NextResponse.json({ products });
 }
 
@@ -21,12 +21,12 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { campaignId, name, dataUrl } = await req.json();
+  const { campaignId, name, dataUrl, kind } = await req.json();
   if (!(await owns(uid, campaignId))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const b64 = String(dataUrl || "").split(",")[1] || "";
   if (!b64) return NextResponse.json({ error: "No image data" }, { status: 400 });
-  const p = await prisma.productImage.create({ data: { brandId: campaignId, name: name || "product", data: b64 } });
-  return NextResponse.json({ id: p.id, name: p.name });
+  const p = await prisma.productImage.create({ data: { brandId: campaignId, name: name || "asset", kind: kind === "logo" ? "logo" : "product", data: b64 } });
+  return NextResponse.json({ id: p.id, name: p.name, kind: p.kind });
 }
 
 // Delete a product image.

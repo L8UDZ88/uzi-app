@@ -77,26 +77,34 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
 // Generate the scene WITH the real product placed in it, by giving gpt-image-1 the product
 // PNG as an input image. The model builds the scene around the actual product — aligned,
 // scaled, and lit — so there's no overlay/misalignment and no AI-invented duplicate can.
+export type AssetImage = { buffer: Buffer; mime: string; kind: "product" | "logo" };
+
 export async function generateImageWithProduct(
-  brief: string, brand: Brand, aspect: string | undefined, product: { buffer: Buffer; mime: string }
+  brief: string, brand: Brand, aspect: string | undefined, assets: AssetImage[]
 ): Promise<{ image: string | null; error?: string }> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return { image: null, error: "No OPENAI_API_KEY set." };
+  const hasProduct = assets.some((a) => a.kind === "product");
+  const hasLogo = assets.some((a) => a.kind === "logo");
   const prompt =
     `Photorealistic editorial brand photo${brand.name ? ` for ${brand.name}` : ""}. ` +
-    `Integrate the EXACT product shown in the provided image into a scene — keep its can/label/design unchanged; do NOT redraw, restyle, or relabel it. ` +
-    (brand.product ? `The product: ${brand.product}. ` : "") +
+    (hasProduct ? `Integrate the EXACT product shown in the provided product image into the scene — keep its can/label/design unchanged; do NOT redraw, restyle, or relabel it. ` : "") +
+    (hasLogo ? `Reflect the brand's visual identity from the provided logo/brand image (its colors and feel). You may place the logo subtly and tastefully (e.g. on signage, a screen, or a corner) only where it fits naturally — never large or watermark-like. ` : "") +
+    (brand.product ? `The product/brand: ${brand.product}. ` : "") +
     `Scene: ${brief}. ` +
     (brand.region ? `Setting/mood: ${brand.region}. ` : "") +
     (brand.donts ? `Avoid: ${brand.donts}. ` : "") +
-    `Match the scene's lighting, shadows, and perspective to the product so it sits naturally in the world. ` +
-    `Do NOT add any other drinks, cans, bottles, or glasses. No text, no logos, no watermarks. Leave negative space for caption text.`;
+    `Match the scene's lighting, shadows, and perspective so everything sits naturally in the world. ` +
+    (hasProduct ? `Do NOT add any other drinks, cans, bottles, or glasses. ` : "") +
+    `No invented text or watermarks. Leave negative space for caption text.`;
   try {
     const form = new FormData();
     form.append("model", "gpt-image-1");
     form.append("prompt", prompt);
     form.append("size", sizeFor("gpt-image-1", aspect));
-    form.append("image", new Blob([new Uint8Array(product.buffer)], { type: product.mime || "image/png" }), "product.png");
+    for (const a of assets) {
+      form.append("image[]", new Blob([new Uint8Array(a.buffer)], { type: a.mime || "image/png" }), `${a.kind}.png`);
+    }
     const r = await fetch("https://api.openai.com/v1/images/edits", {
       method: "POST",
       headers: { authorization: `Bearer ${key}` },

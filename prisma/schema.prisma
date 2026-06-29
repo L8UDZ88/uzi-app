@@ -84,6 +84,7 @@ model ProductImage {
   brandId   String
   brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
   name      String   @default("product")
+  kind      String   @default("product") // product | logo (brand mark / design to infuse)
   data      String   @db.Text // base64 PNG
   createdAt DateTime @default(now())
 }

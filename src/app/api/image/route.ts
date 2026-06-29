@@ -20,13 +20,19 @@ export async function POST(req: Request) {
   const bk = ((c.inputs as any) || {}).brandKit || {};
   const brand = { name: c.name, region: c.region, voice: c.voice, product: bk.product || "", donts: bk.donts || "" };
 
+  // Gather brand assets to render INTO the scene: the chosen product + any logo/brand images.
+  const assets: { buffer: Buffer; mime: string; kind: "product" | "logo" }[] = [];
   if (productId) {
     const p = await prisma.productImage.findUnique({ where: { id: productId } });
-    if (p && p.brandId === campaignId) {
-      const r = await generateImageWithProduct(brief || "", brand, aspect, { buffer: Buffer.from(p.data, "base64"), mime: "image/png" });
-      if (!r.image) return NextResponse.json({ error: r.error || "Couldn't generate the product image — try again." }, { status: 502 });
-      return NextResponse.json({ image: r.image, withProduct: true });
-    }
+    if (p && p.brandId === campaignId) assets.push({ buffer: Buffer.from(p.data, "base64"), mime: "image/png", kind: "product" });
+  }
+  const logos = await prisma.productImage.findMany({ where: { brandId: campaignId, kind: "logo" }, take: 2 });
+  for (const l of logos) assets.push({ buffer: Buffer.from(l.data, "base64"), mime: "image/png", kind: "logo" });
+
+  if (assets.length) {
+    const r = await generateImageWithProduct(brief || "", brand, aspect, assets);
+    if (!r.image) return NextResponse.json({ error: r.error || "Couldn't generate the image — try again." }, { status: 502 });
+    return NextResponse.json({ image: r.image, withProduct: true });
   }
   const { image, error } = await generateImage(brief || "", brand, aspect);
   if (!image) return NextResponse.json({ error: error || "Couldn't generate an image — try again." }, { status: 502 });

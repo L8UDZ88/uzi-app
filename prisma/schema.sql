@@ -72,6 +72,7 @@ CREATE TABLE "ProductImage" (
   "id" TEXT PRIMARY KEY,
   "brandId" TEXT NOT NULL REFERENCES "Brand"("id") ON DELETE CASCADE,
   "name" TEXT NOT NULL DEFAULT 'product',
+  "kind" TEXT NOT NULL DEFAULT 'product',
   "data" TEXT NOT NULL,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );

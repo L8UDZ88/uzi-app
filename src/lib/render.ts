@@ -10,11 +10,12 @@ const BASE = `https://api.shotstack.io/${ENV}`;
 
 type TimelineOpts = {
   stillUrl?: string;   // the generated on-brand still (product baked in) — primary path
-  clipUrl?: string;    // a stock video clip — fallback path
+  clipUrl?: string;    // an animated or stock video clip
+  clipLoopSeg?: number; // if set, tile the clip in segments of this length to cover `length`
   voUrl?: string;
   musicUrl?: string;
   productUrl?: string; // only overlaid in the stock-clip path
-  length: number;
+  length: number;      // total video length (kept > voiceover length so VO is never cut)
   width: number;
   height: number;
   title?: string;
@@ -38,15 +39,22 @@ export function buildTimeline(o: TimelineOpts) {
       clips: [{ asset: { type: "image", src: o.stillUrl }, start: 0, length: o.length, effect: "zoomIn", fit: "cover" }],
     });
   } else {
-    // FALLBACK: stock clip background + real product overlaid bottom-right.
+    // Animated/stock clip background (+ product overlay only in the stock path).
     if (o.productUrl) {
       tracks.push({
         clips: [{ asset: { type: "image", src: o.productUrl }, start: 0, length: o.length, fit: "none", scale: 0.45, position: "bottomRight", offset: { x: -0.04, y: 0.06 } }],
       });
     }
-    tracks.push({
-      clips: [{ asset: { type: "video", src: o.clipUrl }, start: 0, length: o.length, fit: "cover" }],
-    });
+    if (o.clipLoopSeg && o.clipLoopSeg > 0) {
+      // Tile the (short) animated clip so the video always covers the full voiceover.
+      const clips: any[] = [];
+      for (let s = 0; s < o.length; s += o.clipLoopSeg) {
+        clips.push({ asset: { type: "video", src: o.clipUrl }, start: s, length: Math.min(o.clipLoopSeg, o.length - s), fit: "cover" });
+      }
+      tracks.push({ clips });
+    } else {
+      tracks.push({ clips: [{ asset: { type: "video", src: o.clipUrl }, start: 0, length: o.length, fit: "cover" }] });
+    }
   }
   // Voiceover
   if (o.voUrl) tracks.push({ clips: [{ asset: { type: "audio", src: o.voUrl }, start: 0, length: o.length }] });

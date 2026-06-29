@@ -14,7 +14,7 @@ export async function submitAnimate(imageUrl: string, prompt: string): Promise<{
     const r = await fetch(`https://queue.fal.run/${MODEL}`, {
       method: "POST",
       headers: { authorization: `Key ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ image_url: imageUrl, prompt: prompt.slice(0, 500), duration: "5" }),
+      body: JSON.stringify({ image_url: imageUrl, prompt: prompt.slice(0, 500), duration: "10" }),
     });
     const j: any = await r.json().catch(() => ({}));
     if (!r.ok) return { error: `fal: ${j?.detail || j?.message || `HTTP ${r.status}`}` };

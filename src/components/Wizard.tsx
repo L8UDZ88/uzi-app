@@ -34,14 +34,14 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(2);
   }, [campaignId]);
 
-  const uploadProduct = (file?: File) => {
+  const uploadProduct = (file: File | undefined, kind: string = "product") => {
     if (!file) return;
     setProdBusy(true);
     const reader = new FileReader();
     reader.onload = async () => {
-      const d = await (await fetch("/api/products", { method: "POST", body: JSON.stringify({ campaignId, name: file.name, dataUrl: reader.result }) })).json();
+      const d = await (await fetch("/api/products", { method: "POST", body: JSON.stringify({ campaignId, name: file.name, dataUrl: reader.result, kind }) })).json();
       setProdBusy(false);
-      if (d.id) setProducts((p) => [{ id: d.id, name: d.name }, ...p]);
+      if (d.id) setProducts((p) => [{ id: d.id, name: d.name, kind: d.kind }, ...p]);
     };
     reader.readAsDataURL(file);
   };
@@ -192,10 +192,10 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
           </div>
 
           <div className="mt-5">
-            <div className="text-sm font-semibold text-zinc-200">Product images (transparent PNG)</div>
-            <div className="text-zinc-400 text-sm">Upload your product cut out on a transparent background. Uzi composites it into the scenes — the real product, never AI-drawn.</div>
+            <div className="text-sm font-semibold text-zinc-200">{isDigital ? "Product / app screenshot (transparent PNG)" : "Product images (transparent PNG)"}</div>
+            <div className="text-zinc-400 text-sm">Upload your {isDigital ? "product UI / device shot" : "product cut out on a transparent background"}. Uzi renders it <em>into</em> the scene — the real thing, never AI-drawn.</div>
             <div className="flex flex-wrap gap-3 mt-3">
-              {products.map((p) => (
+              {products.filter((p) => p.kind !== "logo").map((p) => (
                 <div key={p.id} className="relative w-20 h-20 rounded-lg border border-zinc-700 bg-[conic-gradient(#27272a_90deg,#18181b_90deg_180deg,#27272a_180deg_270deg,#18181b_270deg)] bg-[length:16px_16px] overflow-hidden">
                   <img src={`/api/product/${p.id}`} alt={p.name} className="w-full h-full object-contain" />
                   <button onClick={() => delProduct(p.id)} className="absolute top-0.5 right-0.5 text-[10px] bg-black/70 text-white rounded px-1">✕</button>
@@ -203,7 +203,24 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               ))}
               <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
                 {prodBusy ? "…" : "+"}
-                <input type="file" accept="image/png" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0])} />
+                <input type="file" accept="image/png" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0], "product")} />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="text-sm font-semibold text-zinc-200">Logo / brand design (transparent PNG)</div>
+            <div className="text-zinc-400 text-sm">Your logo and brand marks. Uzi infuses these into the imagery (colors + a tasteful logo placement) for both digital and physical brands.</div>
+            <div className="flex flex-wrap gap-3 mt-3">
+              {products.filter((p) => p.kind === "logo").map((p) => (
+                <div key={p.id} className="relative w-20 h-20 rounded-lg border border-zinc-700 bg-[conic-gradient(#27272a_90deg,#18181b_90deg_180deg,#27272a_180deg_270deg,#18181b_270deg)] bg-[length:16px_16px] overflow-hidden">
+                  <img src={`/api/product/${p.id}`} alt={p.name} className="w-full h-full object-contain" />
+                  <button onClick={() => delProduct(p.id)} className="absolute top-0.5 right-0.5 text-[10px] bg-black/70 text-white rounded px-1">✕</button>
+                </div>
+              ))}
+              <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
+                {prodBusy ? "…" : "+"}
+                <input type="file" accept="image/png" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0], "logo")} />
               </label>
             </div>
           </div>
