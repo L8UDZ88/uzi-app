@@ -17,6 +17,11 @@ function modelChain(): string[] {
   return Array.from(new Set(chain));
 }
 
+// gpt-image-1 quality: low | medium | high | auto. Lower = much faster (avoids Vercel 504s).
+// Default "low" keeps generation well under the 60s serverless limit; raise via IMAGE_QUALITY
+// (e.g. "medium"/"high") if you're on a Vercel tier with a longer function timeout.
+const IMG_QUALITY = (process.env.IMAGE_QUALITY || "low").toLowerCase();
+
 function sizeFor(model: string, aspect?: string): string {
   const dalle = model.startsWith("dall-e");
   if (aspect === "vertical" || aspect === "feed" || aspect === "carousel") return dalle ? "1024x1792" : "1024x1536";
@@ -26,16 +31,13 @@ function sizeFor(model: string, aspect?: string): string {
 
 async function tryModel(model: string, key: string, prompt: string, aspect?: string): Promise<{ url?: string; error?: string }> {
   let res: Response;
+  const body: any = { model, prompt, size: sizeFor(model, aspect), n: 1 };
+  if (model === "gpt-image-1") body.quality = IMG_QUALITY; // faster, avoids 504s
   try {
     res = await fetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model,
-        prompt,
-        size: sizeFor(model, aspect),
-        n: 1,
-      }),
+      body: JSON.stringify(body),
     });
   } catch (e: any) {
     return { error: `${model}: network error ${String(e?.message || e)}` };
@@ -102,6 +104,7 @@ export async function generateImageWithProduct(
     form.append("model", "gpt-image-1");
     form.append("prompt", prompt);
     form.append("size", sizeFor("gpt-image-1", aspect));
+    form.append("quality", IMG_QUALITY); // faster, avoids Vercel 504s on the product path
     for (const a of assets) {
       form.append("image[]", new Blob([new Uint8Array(a.buffer)], { type: a.mime || "image/png" }), `${a.kind}.png`);
     }
