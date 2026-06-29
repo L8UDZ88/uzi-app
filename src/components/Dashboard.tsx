@@ -5,6 +5,19 @@ import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
+// POST + parse JSON with a hard timeout so a slow/hung server (e.g. a 504) can never freeze a button.
+async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "POST", body: JSON.stringify(body), signal: ctrl.signal });
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return { error: res.ok ? "Unexpected response from server." : `Server error (${res.status}).` }; }
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
 
@@ -13,6 +26,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [tab, setTab] = useState("calendar");
   const [slots, setSlots] = useState<Slot[]>(initial);
   const [busy, setBusy] = useState(false);
+  const [calFrom, setCalFrom] = useState(new Date().toISOString().slice(0, 10));
+  const [calTo, setCalTo] = useState(new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Slot | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -79,10 +95,22 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const regen = async () => {
     setBusy(true);
-    const res = await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" });
+    const res = await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST", body: JSON.stringify({ from: calFrom, to: calTo }) });
     const d = await res.json();
-    setSlots((d.slots || []).map((s: any, i: number) => ({ ...s, id: initial[i]?.id || String(i), status: "queued" })));
+    setSlots(d.slots || []);
+    setSelected(new Set());
     setBusy(false);
+  };
+  const toggleSel = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allSelected = slots.length > 0 && selected.size === slots.length;
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(slots.map((s) => s.id)));
+  const delSelected = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} selected post(s)? This can't be undone.`)) return;
+    const ids = Array.from(selected);
+    await fetch("/api/schedule/delete-many", { method: "POST", body: JSON.stringify({ campaignId, ids }) });
+    setSlots(slots.filter((s) => !selected.has(s.id)));
+    setSelected(new Set());
   };
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
@@ -128,10 +156,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       try {
         setVideoStatus("animating…");
         const an = await (await fetch("/api/video/animate", { method: "POST", body: JSON.stringify({ campaignId, stillDataUrl: still, brief: editBrief || draft.visualBrief }) })).json();
-        if (an.statusUrl && an.responseUrl) {
+        if (an.requestId) {
           for (let i = 0; i < 60 && !animatedClip; i++) {
             await new Promise((r) => setTimeout(r, 5000));
-            const st = await (await fetch(`/api/video/animate?statusUrl=${encodeURIComponent(an.statusUrl)}&responseUrl=${encodeURIComponent(an.responseUrl)}`)).json();
+            const st = await (await fetch(`/api/video/animate?requestId=${encodeURIComponent(an.requestId)}`)).json();
             setVideoStatus(`animating… ${(st.status || "").toLowerCase()}`);
             if (st.videoUrl) animatedClip = st.videoUrl;
             else if (st.error) break;
@@ -162,15 +190,21 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const genMusic = async () => {
     if (!open) return;
     setMusicBusy(true); setMusic(null);
-    const an = await (await fetch("/api/music", { method: "POST", body: JSON.stringify({ campaignId, mood: campaign.voice }) })).json();
-    if (!an.statusUrl || !an.responseUrl) { setMusicBusy(false); alert(an.error || "Couldn't start the music."); return; }
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const st = await (await fetch(`/api/music?statusUrl=${encodeURIComponent(an.statusUrl)}&responseUrl=${encodeURIComponent(an.responseUrl)}`)).json();
-      if (st.audioUrl) { setMusic(st.audioUrl); setMusicBusy(false); return; }
-      if (st.error) { setMusicBusy(false); alert(st.error); return; }
+    try {
+      const an = await (await fetch("/api/music", { method: "POST", body: JSON.stringify({ campaignId, mood: campaign.voice }) })).json();
+      if (!an.requestId) { alert(an.error || "Couldn't start the music."); return; }
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const st = await (await fetch(`/api/music?requestId=${encodeURIComponent(an.requestId)}`)).json();
+        if (st.audioUrl) { setMusic(st.audioUrl); return; }
+        if (st.error) { alert(st.error); return; }
+      }
+      alert("Music is taking a while — try again.");
+    } catch (e: any) {
+      alert("Couldn't reach the music service — try again.");
+    } finally {
+      setMusicBusy(false);
     }
-    setMusicBusy(false); alert("Music is taking a while — try again.");
   };
   const exportStill = async () => {
     if (!open || !image) { alert("Generate a visual first."); return; }
@@ -195,18 +229,26 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const genImage = async () => {
     if (!open || !draft) return;
     setImgBusy(true);
-    const res = await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format), productId: productSel }) });
-    const d = await res.json();
-    setImgBusy(false);
-    if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image.");
+    try {
+      const d = await postJSON("/api/image", { campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format), productId: productSel }, 90000);
+      if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image — try again.");
+    } catch (e: any) {
+      alert(e?.name === "AbortError" ? "The image took too long and timed out. Try again, or regenerate without the product." : "Couldn't reach the image service — try again.");
+    } finally {
+      setImgBusy(false);
+    }
   };
   const genVoice = async () => {
     if (!open || !draft) return;
     setVoBusy(true);
-    const res = await fetch("/api/voiceover", { method: "POST", body: JSON.stringify({ campaignId, text: draft.caption, voice: voVoice }) });
-    const d = await res.json();
-    setVoBusy(false);
-    if (d.audio) setVo(d.audio); else alert(d.error || "Couldn't generate voiceover.");
+    try {
+      const d = await postJSON("/api/voiceover", { campaignId, text: draft.caption, voice: voVoice }, 60000);
+      if (d.audio) setVo(d.audio); else alert(d.error || "Couldn't generate voiceover.");
+    } catch (e: any) {
+      alert(e?.name === "AbortError" ? "The voiceover timed out — try again." : "Couldn't reach the voice service — try again.");
+    } finally {
+      setVoBusy(false);
+    }
   };
   const approve = async () => {
     if (!open || !draft) return;
@@ -251,16 +293,28 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
         {tab === "calendar" && (
           <Card className="p-4">
-            <div className="flex items-center justify-between mb-3 px-2">
-              <div className="font-bold">Auto-built calendar · click any post to draft it</div>
-              <div className="flex gap-2">
-                <Btn kind="ghost" className="text-xs px-3 py-1.5" disabled={busy} onClick={regen}>{busy ? "Rebuilding…" : "Rebuild"}</Btn>
+            <div className="mb-3 px-2 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="font-bold">Calendar · click a post to draft it</div>
                 <Btn className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="text-zinc-500">From</span>
+                <input type="date" value={calFrom} onChange={(e) => setCalFrom(e.target.value)} className="bg-zinc-800 rounded-lg px-2 py-1 text-zinc-200" />
+                <span className="text-zinc-500">To</span>
+                <input type="date" value={calTo} onChange={(e) => setCalTo(e.target.value)} className="bg-zinc-800 rounded-lg px-2 py-1 text-zinc-200" />
+                <Btn kind="ghost" className="text-xs px-3 py-1.5" disabled={busy} onClick={regen}>{busy ? "Building…" : "Build calendar"}</Btn>
+                <span className="text-zinc-600">up to 3 years</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <label className="flex items-center gap-1.5 cursor-pointer text-zinc-400"><input type="checkbox" checked={allSelected} onChange={toggleAll} /> Select all ({slots.length})</label>
+                {selected.size > 0 && <button onClick={delSelected} className="text-red-400 hover:text-red-300 font-semibold">Delete selected ({selected.size})</button>}
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
               {slots.map((e) => (
                 <div key={e.id} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
+                  <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSel(e.id)} className="shrink-0" />
                   <button onClick={() => openSlot(e)} className="flex-1 flex items-center gap-3 text-left min-w-0">
                     <div className="w-20 text-zinc-500 shrink-0">{e.day} {e.date.slice(5)}</div>
                     <div className="w-8 text-center text-accent shrink-0">{e.glyph}</div>

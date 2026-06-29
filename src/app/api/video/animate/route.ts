@@ -5,7 +5,7 @@ import { submitAnimate, animateResult, animateEnabled } from "@/lib/animate";
 
 export const maxDuration = 60;
 
-// POST: submit the still for animation. GET: poll status (?statusUrl=&responseUrl=).
+// POST: submit the still for animation. GET: poll status (?requestId=).
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,14 +21,12 @@ export async function POST(req: Request) {
   const prompt = `Subtle cinematic motion: gentle camera move, ambient life and light. Keep the product, composition, and colors unchanged. ${(brief || "").slice(0, 200)}`;
   const r = await submitAnimate(stillUrl, prompt);
   if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
-  return NextResponse.json({ statusUrl: r.statusUrl, responseUrl: r.responseUrl });
+  return NextResponse.json({ requestId: r.requestId });
 }
 
 export async function GET(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sp = new URL(req.url).searchParams;
-  const statusUrl = sp.get("statusUrl") || "";
-  const responseUrl = sp.get("responseUrl") || "";
-  return NextResponse.json(await animateResult(statusUrl, responseUrl));
+  return NextResponse.json(await animateResult(sp.get("requestId") || ""));
 }

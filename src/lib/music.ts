@@ -1,46 +1,48 @@
 // AI music score via Sonauto on fal.ai (reuses FAL_KEY). Async queue: submit -> poll -> audio URL.
+// Uses the official @fal-ai/client so partner model ids (e.g. "sonauto/v2/text-to-music")
+// resolve correctly — raw REST treats "v2" as the app name and 404s.
 // The render lays this under the voiceover (ducked) and trims it to the video length.
+
+import { fal } from "@fal-ai/client";
 
 export function musicEnabled(): boolean {
   return !!process.env.FAL_KEY;
 }
 const MUSIC_MODEL = process.env.MUSIC_MODEL || "sonauto/v2/text-to-music";
 
-export async function submitMusic(prompt: string, tags: string): Promise<{ statusUrl?: string; responseUrl?: string; error?: string }> {
-  const key = process.env.FAL_KEY;
-  if (!key) return { error: "No FAL_KEY." };
+function cfg() {
+  if (process.env.FAL_KEY) fal.config({ credentials: process.env.FAL_KEY });
+}
+const msg = (e: any) => String(e?.body?.detail?.[0]?.msg || e?.body?.detail || e?.message || e);
+
+// Instrumental score: tags + empty lyrics_prompt forces no vocals (Sonauto's documented way).
+export async function submitMusic(tags: string[]): Promise<{ requestId?: string; error?: string }> {
+  if (!process.env.FAL_KEY) return { error: "No FAL_KEY." };
+  cfg();
   try {
-    const r = await fetch(`https://queue.fal.run/${MUSIC_MODEL}`, {
-      method: "POST",
-      headers: { authorization: `Key ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ prompt: prompt.slice(0, 500), tags: tags.slice(0, 200), num_songs: 1 }),
+    const { request_id } = await fal.queue.submit(MUSIC_MODEL, {
+      input: { tags, lyrics_prompt: "", num_songs: 1, output_format: "mp3" },
     });
-    const j: any = await r.json().catch(() => ({}));
-    if (!r.ok) return { error: `fal music: ${j?.detail || j?.message || `HTTP ${r.status}`}` };
-    return { statusUrl: j?.status_url, responseUrl: j?.response_url };
+    return { requestId: request_id };
   } catch (e: any) {
-    return { error: `fal music: ${String(e?.message || e)}` };
+    return { error: `fal music: ${msg(e)}` };
   }
 }
 
-const okUrl = (u?: string) => typeof u === "string" && u.startsWith("https://queue.fal.run/");
-
-export async function musicResult(statusUrl: string, responseUrl: string): Promise<{ status?: string; audioUrl?: string; error?: string }> {
-  const key = process.env.FAL_KEY;
-  if (!key) return { error: "No FAL_KEY." };
-  if (!okUrl(statusUrl) || !okUrl(responseUrl)) return { error: "Bad fal URL." };
+export async function musicResult(requestId: string): Promise<{ status?: string; audioUrl?: string; error?: string }> {
+  if (!process.env.FAL_KEY) return { error: "No FAL_KEY." };
+  if (!requestId) return { error: "Missing request id." };
+  cfg();
   try {
-    const s = await fetch(statusUrl, { headers: { authorization: `Key ${key}` } });
-    const sj: any = await s.json().catch(() => ({}));
-    if (sj?.status !== "COMPLETED") return { status: sj?.status || "IN_PROGRESS" };
-    const rr = await fetch(responseUrl, { headers: { authorization: `Key ${key}` } });
-    const rj: any = await rr.json().catch(() => ({}));
+    const s: any = await fal.queue.status(MUSIC_MODEL, { requestId });
+    if (s?.status !== "COMPLETED") return { status: s?.status || "IN_PROGRESS" };
+    const r: any = await fal.queue.result(MUSIC_MODEL, { requestId });
+    const d = r?.data || r;
     const audioUrl =
-      rj?.audio?.url || rj?.audio_url ||
-      rj?.song_paths?.[0] || rj?.songs?.[0]?.url || rj?.songs?.[0]?.audio_url ||
-      rj?.output?.audio?.url || rj?.output?.[0]?.url;
+      d?.audio?.url || d?.audio?.[0]?.url ||
+      d?.audio_url || (Array.isArray(d?.audio) ? d.audio[0]?.url : undefined);
     return { status: "COMPLETED", audioUrl };
   } catch (e: any) {
-    return { error: `fal music: ${String(e?.message || e)}` };
+    return { error: `fal music: ${msg(e)}` };
   }
 }
