@@ -210,8 +210,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
     let renderBody: any;
     if (pickedClip) {
-      // Optional stock-clip path (product overlaid).
-      renderBody = { campaignId, brief: editBrief || draft.visualBrief, aspect, clipUrl: pickedClip, productId: productSel, ...audio };
+      // Optional stock-clip path (product overlaid). Pass the clip's real duration so the render
+      // slows it to fill the length instead of looping/freezing.
+      const pickedDur = clips.find((c: any) => c.id === picked)?.duration || 0;
+      renderBody = { campaignId, brief: editBrief || draft.visualBrief, aspect, clipUrl: pickedClip, clipSeconds: pickedDur, productId: productSel, ...audio };
     } else {
       // Primary path: the on-brand still (product baked in) → animate it → render.
       let still = image;
@@ -221,11 +223,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         if (ir.image) { still = ir.image; setImage(ir.image); }
         else { setVideoBusy(false); setVideoStatus(""); alert(ir.error || "Couldn't generate the image for the video."); return; }
       }
-      // Try real motion (fal/Kling). If not enabled or it fails, fall back to the still + zoom.
+      // Generative motion (fal/Kling) so the WORLD moves — people, water, light, atmosphere —
+      // while the product stays locked. The animate prompt pins the can so its label survives.
+      // If Kling isn't available it falls back to the still + slow push-in.
       let animatedClip: string | undefined;
       try {
         setVideoStatus("animating…");
-        const an = await (await fetch("/api/video/animate", { method: "POST", body: JSON.stringify({ campaignId, stillDataUrl: still, brief: editBrief || draft.visualBrief }) })).json();
+        const an = await (await fetch("/api/video/animate", { method: "POST", body: JSON.stringify({ campaignId, stillDataUrl: still, brief: editBrief || draft.visualBrief, sceneStyle }) })).json();
         if (an.requestId) {
           for (let i = 0; i < 60 && !animatedClip; i++) {
             await new Promise((r) => setTimeout(r, 5000));
@@ -235,10 +239,14 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             else if (st.error) break;
           }
         }
-      } catch { /* fall back to zoom */ }
-      renderBody = animatedClip
-        ? { campaignId, aspect, clipUrl: animatedClip, loopSeg: 10, ...audio }
-        : { campaignId, brief: editBrief || draft.visualBrief, aspect, stillDataUrl: still, ...audio };
+      } catch { /* fall back to still push-in */ }
+      if (animatedClip) {
+        // Measure the generated clip so the render slows it to fill the full length (no loop).
+        const clipSeconds = await measureAudio(animatedClip);
+        renderBody = { campaignId, aspect, clipUrl: animatedClip, clipSeconds, ...audio };
+      } else {
+        renderBody = { campaignId, brief: editBrief || draft.visualBrief, aspect, stillDataUrl: still, ...audio };
+      }
     }
 
     setVideoStatus("rendering…");
@@ -261,7 +269,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     if (!open) return;
     setMusicBusy(true); setMusic(null); setNoMusic(false);
     try {
-      const an = await postJSON("/api/music", { campaignId, mood: campaign.voice }, 90000);
+      // Size the score to the voiceover (+buffer) so it's a single track LONGER than the VO.
+      const target = voSeconds ? Math.ceil(voSeconds) + 3 : 30;
+      const an = await postJSON("/api/music", { campaignId, mood: campaign.voice, seconds: target }, 90000);
       if (an.audioUrl) { setMusic(an.audioUrl); setMusicSeconds(await measureAudio(an.audioUrl)); } else alert(an.error || "Couldn't generate music — try again.");
     } catch (e: any) {
       alert(e?.name === "AbortError" ? "The music timed out — try again." : "Couldn't reach the music service — try again.");

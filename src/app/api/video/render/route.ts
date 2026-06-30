@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!renderEnabled()) {
     return NextResponse.json({ error: "Video render isn't enabled yet — add SHOTSTACK_API_KEY in Vercel." }, { status: 400 });
   }
-  const { campaignId, text, brief, voice, clipUrl, musicUrl, musicSeconds, aspect, productId, stillDataUrl, loopSeg, voDataUrl, voSeconds, noVo } = await req.json();
+  const { campaignId, text, brief, voice, clipUrl, clipSeconds, musicUrl, musicSeconds, aspect, productId, stillDataUrl, loopSeg, voDataUrl, voSeconds, noVo } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const origin = new URL(req.url).origin;
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   const vertical = aspect !== "wide";
 
   const timeline = buildTimeline({
-    stillUrl, clipUrl: clip, clipLoopSeg: clip && loopSeg ? Number(loopSeg) : undefined,
+    stillUrl, clipUrl: clip, clipSeconds: Number(clipSeconds) || undefined, clipLoopSeg: clip && loopSeg ? Number(loopSeg) : undefined,
     voUrl, musicUrl: musicUrl || undefined, musicLoopSeg: mSec > 0 ? mSec : 30, productUrl,
     length, width: vertical ? 1080 : 1920, height: vertical ? 1920 : 1080,
   });

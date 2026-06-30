@@ -11,7 +11,8 @@ const BASE = `https://api.shotstack.io/${ENV}`;
 type TimelineOpts = {
   stillUrl?: string;   // the generated on-brand still (product baked in) — primary path
   clipUrl?: string;    // an animated or stock video clip
-  clipLoopSeg?: number; // if set, tile the clip in segments of this length to cover `length`
+  clipSeconds?: number; // the clip's real duration — we slow it to stretch across `length` (no loop)
+  clipLoopSeg?: number; // legacy fallback if clipSeconds is unknown
   voUrl?: string;
   musicUrl?: string;
   musicLoopSeg?: number; // tile the music every N seconds to cover the full length (default 30)
@@ -45,16 +46,11 @@ export function buildTimeline(o: TimelineOpts) {
         clips: [{ asset: { type: "image", src: o.productUrl }, start: 0, length: o.length, fit: "none", scale: 0.45, position: "bottomRight", offset: { x: -0.04, y: 0.06 } }],
       });
     }
-    if (o.clipLoopSeg && o.clipLoopSeg > 0) {
-      // Tile the (short) animated clip so the video always covers the full voiceover.
-      const clips: any[] = [];
-      for (let s = 0; s < o.length; s += o.clipLoopSeg) {
-        clips.push({ asset: { type: "video", src: o.clipUrl }, start: s, length: Math.min(o.clipLoopSeg, o.length - s), fit: "cover" });
-      }
-      tracks.push({ clips });
-    } else {
-      tracks.push({ clips: [{ asset: { type: "video", src: o.clipUrl }, start: 0, length: o.length, fit: "cover" }] });
-    }
+    // Slow the clip down to STRETCH across the full length — one continuous shot, no loop, no
+    // freeze. (Shotstack `speed` < 1 = slow motion.) If the clip is already long enough, play 1x.
+    const srcDur = o.clipSeconds && o.clipSeconds > 0 ? o.clipSeconds : (o.clipLoopSeg && o.clipLoopSeg > 0 ? o.clipLoopSeg : o.length);
+    const speed = Math.max(0.25, Math.min(1, srcDur / o.length));
+    tracks.push({ clips: [{ asset: { type: "video", src: o.clipUrl, speed }, start: 0, length: o.length, fit: "cover" }] });
   }
   // Voiceover
   if (o.voUrl) tracks.push({ clips: [{ asset: { type: "audio", src: o.voUrl }, start: 0, length: o.length }] });
