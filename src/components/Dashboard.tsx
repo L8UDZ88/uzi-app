@@ -5,6 +5,19 @@ import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
+// Hard-cap the spoken voiceover script to ~20 seconds (≈230 chars), trimmed at a clean sentence
+// boundary. Ambient Film is exempt (it's meant to run long). This bounds the video length no
+// matter how long the AI copy comes back.
+function shortScript(text: string, isFilm: boolean): string {
+  const t = (text || "").replace(/#[^\s#]+/g, "").replace(/\s+/g, " ").trim();
+  if (isFilm || t.length <= 230) return t;
+  const slice = t.slice(0, 230);
+  const end = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  if (end > 110) return slice.slice(0, end + 1).trim();
+  const sp = slice.lastIndexOf(" ");
+  return (sp > 110 ? slice.slice(0, sp) : slice).trim() + ".";
+}
+
 // Measure an audio asset's real duration (seconds) so the video can be sized to fit it.
 function measureAudio(src: string): Promise<number> {
   return new Promise((res) => {
@@ -183,7 +196,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
     setEditBrief(d.draft?.visualBrief || "");
-    setEditScript(d.draft?.script || d.draft?.caption || "");
+    // Voiceover reads the SAME copy as the description (caption). Hashtags stripped; capped for length.
+    const isFilm = /ambient|brand film|\bfilm\b|vision/i.test(s.pillar || "");
+    setEditScript(shortScript(d.draft?.caption || "", isFilm));
     const kw = String(d.draft?.visualBrief || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 3).slice(0, 4).join(" ");
     setStockQ(kw || campaign.region || "");
   };

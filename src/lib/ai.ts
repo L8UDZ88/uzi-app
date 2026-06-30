@@ -34,6 +34,18 @@ export function aiEnabled(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
+// Hard-cap the caption so it can never come back as a wall of text, trimmed at a sentence end.
+function capCaption(text: string, isFilm: boolean): string {
+  const t = (text || "").trim();
+  const max = isFilm ? 520 : 320;
+  if (t.length <= max) return t;
+  const slice = t.slice(0, max);
+  const end = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "), slice.lastIndexOf(".\n"), slice.lastIndexOf("!\n"), slice.lastIndexOf("?\n"));
+  if (end > max * 0.5) return slice.slice(0, end + 1).trim();
+  const sp = slice.lastIndexOf(" ");
+  return (sp > max * 0.5 ? slice.slice(0, sp) : slice).trim() + ".";
+}
+
 export async function generateDraftAI(pillar: string, channel: string, format: string, brand: Brand): Promise<{ draft: Draft; usedAI: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { draft: generateDraft(pillar, channel, format, brand), usedAI: false }; // no key yet → templates
@@ -69,7 +81,7 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
     `Return ONLY valid JSON (no markdown, no commentary) with exactly these keys:\n` +
     `{"headline": string, "caption": string, "script": string, "hashtags": string[] (3-6 items, each starting with #), "visualBrief": string (one sentence of art direction), "cta": string (short)}\n` +
     `${scriptRule}\n` +
-    `The caption can be full and rich for the feed; the script is the spoken track and must follow the length rule above. Be specific and fresh; avoid clichés.`;
+    `Keep the caption SHORT and punchy — ${isFilm ? "4-6 tight sentences max" : "2-4 tight sentences max, roughly 50 words"}; no padding, no rambling. The script is the spoken track and must follow the length rule above. Be specific and fresh; avoid clichés.`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -93,7 +105,7 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
         pillar,
         channel: ch,
         headline: String(json.headline || ""),
-        caption: String(json.caption || ""),
+        caption: capCaption(String(json.caption || ""), isFilm),
         script: String(json.script || ""),
         hashtags: Array.isArray(json.hashtags) ? json.hashtags.map(String) : [],
         visualBrief: String(json.visualBrief || ""),
