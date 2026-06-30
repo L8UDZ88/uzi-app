@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
 import { pillarsFor, CHANNELS, CHANNEL_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
+import { DEPTHS, CHARACTERS, realmsForDepth } from "@/lib/story";
 
-const STEPS = ["Type", "Profile", "Inputs", "7 Pillars", "Outputs", "Cadence"];
+const STEPS = ["Type", "Profile", "Inputs", "Story", "7 Pillars", "Outputs", "Cadence"];
 
 export default function Wizard({ campaignId }: { campaignId: string }) {
   const r = useRouter();
@@ -17,6 +18,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const [driveBusy, setDriveBusy] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [prodBusy, setProdBusy] = useState(false);
+  const [storyBusy, setStoryBusy] = useState(false);
 
   useEffect(() => {
     fetch(`/api/campaigns/${campaignId}`).then((x) => x.json()).then((d) => {
@@ -74,10 +76,29 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
   const save = (extra: any = {}) => fetch(`/api/campaigns/${campaignId}`, { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
+
+  // Story Engine: a few seeds -> AI fills the whole campaign story (cast + realm beats).
+  const setStory = (patch: any) => u({ inputs: { ...cfg.inputs, story: { ...(cfg.inputs?.story || {}), ...patch } } });
+  const genStory = async () => {
+    setStoryBusy(true);
+    const s = cfg.inputs?.story || {};
+    const seed = { hero: s.seedHero, shadow: s.seedShadow, elixir: s.seedElixir, world: s.seedWorld };
+    const depth = s.depth || "mvs";
+    try {
+      const d = await (await fetch("/api/story/generate", { method: "POST", body: JSON.stringify({ campaignId, seed, depth }) })).json();
+      if (d.bible) setStory({ ...d.bible, depth, seedHero: s.seedHero, seedShadow: s.seedShadow, seedElixir: s.seedElixir, seedWorld: s.seedWorld });
+      else alert(d.error || "Couldn't generate the story — try again.");
+    } catch {
+      alert("Couldn't reach the story service — try again.");
+    } finally {
+      setStoryBusy(false);
+    }
+  };
+
   const next = async () => {
     // "Now in [city]" requires at least one city before leaving the Pillars step.
     const nowin = pillarsFor(cfg.campaignType).find((p) => /\[city\]/i.test(p.name));
-    if (step === 3 && nowin && (cfg.pillars?.[nowin.id]?.on ?? true)) {
+    if (step === 4 && nowin && (cfg.pillars?.[nowin.id]?.on ?? true)) {
       if (!String(cfg.pillars?.[nowin.id]?.cities || "").trim()) {
         alert(`Add at least one city for "${nowin.name}" — each post anchors to a specific city. (Or switch that pillar off if you don't want city-launch posts.)`);
         return;
@@ -227,7 +248,74 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {step === 3 && (
+      {step === 3 && (() => {
+        const s = cfg.inputs?.story || {};
+        const depth = s.depth || "mvs";
+        const realms = realmsForDepth(depth);
+        const filled = Array.isArray(s.realms) && s.realms.length > 0;
+        return (
+        <Card className="p-7">
+          <h3 className="text-xl font-bold">Your campaign Story</h3>
+          <p className="text-zinc-400 text-sm mt-1">Your content follows one hero's journey so posts progress instead of repeating. Give a few essentials — AI fills in the rest. You can edit anything.</p>
+
+          <div className="mt-5">
+            <label className="text-xs text-zinc-400">Depth — how much story to tell</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+              {DEPTHS.map((d) => (
+                <button key={d.id} onClick={() => setStory({ depth: d.id })} title={d.blurb}
+                  className={`p-2 rounded-lg border text-xs text-left ${depth === d.id ? "border-lime-400 bg-lime-400/10 text-accent" : "border-zinc-700 text-zinc-300"}`}>
+                  <div className="font-semibold">{d.name}</div>
+                  <div className="text-[10px] text-zinc-500 leading-tight mt-0.5">{d.blurb}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-4">
+            <div className="sm:col-span-2 text-xs text-zinc-500">The 3 essentials (the rest is optional — AI infers it):</div>
+            <input value={s.seedHero || ""} onChange={(e) => setStory({ seedHero: e.target.value })} placeholder="Hero — who is your customer? (e.g. the person who wants something different)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" />
+            <input value={s.seedShadow || ""} onChange={(e) => setStory({ seedShadow: e.target.value })} placeholder="Shadow — what are they up against? (the problem / status quo)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" />
+            <input value={s.seedElixir || ""} onChange={(e) => setStory({ seedElixir: e.target.value })} placeholder="Elixir — the payoff your product unlocks" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" />
+            <input value={s.seedWorld || ""} onChange={(e) => setStory({ seedWorld: e.target.value })} placeholder="Ordinary World — their before-state (optional)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" />
+          </div>
+
+          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Writing your story…" : filled ? "Re-generate story ✨" : "Auto-fill my story with AI ✨"}</Btn>
+          <div className="text-[11px] text-zinc-600 mt-1">You (the brand) are the Mentor. Your customer is the Hero. The product is the Elixir.</div>
+
+          {filled && (
+            <div className="mt-5 space-y-3">
+              <details open>
+                <summary className="text-sm font-semibold cursor-pointer select-none">Cast · {CHARACTERS.length} characters</summary>
+                <div className="mt-2 space-y-2">
+                  {CHARACTERS.map((c) => (
+                    <div key={c.id}>
+                      <label className="text-[11px] text-zinc-500">{c.name}{c.core ? " ★" : ""} — {c.role}</label>
+                      <textarea value={(s.characters || {})[c.id] || ""} onChange={(e) => setStory({ characters: { ...(s.characters || {}), [c.id]: e.target.value } })} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <details open>
+                <summary className="text-sm font-semibold cursor-pointer select-none">Realms · the {realms.length}-beat arc</summary>
+                <div className="mt-2 space-y-2">
+                  {realms.map((r, i) => {
+                    const beat = (s.realms || []).find((x: any) => x.id === r.id)?.beat || "";
+                    return (
+                      <div key={r.id}>
+                        <label className="text-[11px] text-zinc-500">{i + 1}. {r.name} — <span className="text-zinc-600">{r.fn}</span></label>
+                        <textarea value={beat} onChange={(e) => { const realmsArr = realms.map((rr) => ({ id: rr.id, name: rr.name, beat: rr.id === r.id ? e.target.value : ((s.realms || []).find((x: any) => x.id === rr.id)?.beat || "") })); setStory({ realms: realmsArr }); }} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            </div>
+          )}
+        </Card>
+        );
+      })()}
+
+      {step === 4 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Set your 7 pillars</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars, set each one's format + which channels it posts to, and how often.</p>
@@ -292,7 +380,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Connect outputs</h3>
           <p className="text-zinc-400 text-sm mt-1">Pick a channel, then the formats you want. Each format becomes its own tailored post + preview. (Live publishing is Phase 3.)</p>
@@ -325,7 +413,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {step === 5 && (
+      {step === 6 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Cadence</h3>
           <p className="text-zinc-400 text-sm mt-1">How aggressively should the machine fire?</p>
