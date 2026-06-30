@@ -8,6 +8,7 @@ type Brand = { name: string; handle?: string; tagline?: string; region?: string;
 export type Draft = {
   pillar: string; channel: string; headline: string;
   caption: string; hashtags: string[]; visualBrief: string; cta: string;
+  script?: string; // SHORT spoken voiceover script (kept brief to bound video length)
 };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -185,5 +186,6 @@ export function generateDraft(pillar: string, channel: string, format: string, b
     pillar, channel: ch, headline, caption,
     hashtags: c.tags.slice(0, tagCount).map((t) => "#" + t),
     visualBrief, cta: c.cta,
+    script: c.headline, // short fallback spoken line
   };
 }

@@ -57,12 +57,19 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
       : "") +
     `Write platform-native, original copy. Never use a generic template. Vary the hook and angle every time — no two posts should feel alike.`;
 
+  // The spoken voiceover ("script") is kept SHORT to bound video length — except Ambient Film,
+  // which is meant to run long. The on-screen caption can still be full-length and rich.
+  const isFilm = /ambient|brand film|\bfilm\b|vision/i.test(pillar);
+  const scriptRule = isFilm
+    ? `"script": an evocative spoken voiceover for an ambient brand film — up to ~90 words.`
+    : `"script": a SHORT spoken voiceover, AT MOST 40 words (~15-18 seconds when read aloud). Keep it punchy and tight — this directly bounds the video length, so do NOT just reuse the caption.`;
   const user =
     `Write ONE ${ch} ${format || "post"} for this content pillar: "${pillar}".\n` +
     (fmtHint ? fmtHint + "\n" : "") +
     `Return ONLY valid JSON (no markdown, no commentary) with exactly these keys:\n` +
-    `{"headline": string, "caption": string, "hashtags": string[] (3-6 items, each starting with #), "visualBrief": string (one sentence of art direction), "cta": string (short)}\n` +
-    `Make the caption fit the ${ch} ${format || "post"} norms (length, tone). Be specific and fresh; avoid clichés.`;
+    `{"headline": string, "caption": string, "script": string, "hashtags": string[] (3-6 items, each starting with #), "visualBrief": string (one sentence of art direction), "cta": string (short)}\n` +
+    `${scriptRule}\n` +
+    `The caption can be full and rich for the feed; the script is the spoken track and must follow the length rule above. Be specific and fresh; avoid clichés.`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -87,6 +94,7 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
         channel: ch,
         headline: String(json.headline || ""),
         caption: String(json.caption || ""),
+        script: String(json.script || ""),
         hashtags: Array.isArray(json.hashtags) ? json.hashtags.map(String) : [],
         visualBrief: String(json.visualBrief || ""),
         cta: String(json.cta || ""),

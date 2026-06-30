@@ -72,7 +72,7 @@ async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any>
 }
 
 type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null };
-type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string };
+type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string; script?: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
   const r = useRouter();
@@ -183,7 +183,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
     setEditBrief(d.draft?.visualBrief || "");
-    setEditScript(d.draft?.caption || "");
+    setEditScript(d.draft?.script || d.draft?.caption || "");
     const kw = String(d.draft?.visualBrief || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 3).slice(0, 4).join(" ");
     setStockQ(kw || campaign.region || "");
   };
