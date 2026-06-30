@@ -5,6 +5,45 @@ import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
+// Load an image (data URL) into an <img> we can draw to a canvas.
+function loadImg(src: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+
+// Crisp-label composite: drop the REAL product PNG onto an AI background (no AI redraw),
+// so the label stays pixel-perfect. Anchored bottom-center with a soft grounding shadow.
+async function compositeProduct(bgUrl: string, productUrl: string, aspect?: string): Promise<string> {
+  const [bg, pr] = await Promise.all([loadImg(bgUrl), loadImg(productUrl)]);
+  const cw = bg.naturalWidth || 1024, ch = bg.naturalHeight || 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return bgUrl;
+  ctx.drawImage(bg, 0, 0, cw, ch);
+  const targetH = ch * (aspect === "wide" ? 0.66 : 0.76);
+  const scale = targetH / (pr.naturalHeight || targetH);
+  const pw = (pr.naturalWidth || 1) * scale, ph = (pr.naturalHeight || 1) * scale;
+  const x = (cw - pw) / 2;
+  const y = ch - ph - ch * 0.05;
+  // soft contact shadow on the "ground"
+  ctx.save();
+  ctx.filter = "blur(20px)";
+  ctx.fillStyle = "rgba(0,0,0,0.38)";
+  ctx.beginPath();
+  ctx.ellipse(cw / 2, y + ph - ph * 0.03, pw * 0.42, ph * 0.04, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // gentle drop shadow so the can sits in the scene
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+  ctx.shadowBlur = ch * 0.02;
+  ctx.shadowOffsetX = cw * 0.008;
+  ctx.shadowOffsetY = ch * 0.012;
+  ctx.drawImage(pr, x, y, pw, ph);
+  ctx.restore();
+  return canvas.toDataURL("image/png");
+}
+
 // POST + parse JSON with a hard timeout so a slow/hung server (e.g. a 504) can never freeze a button.
 async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any> {
   const ctrl = new AbortController();
@@ -147,7 +186,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       let still = image;
       if (!still) {
         setVideoStatus("generating image…");
-        const ir = await (await fetch("/api/image", { method: "POST", body: JSON.stringify({ campaignId, brief: editBrief || draft.visualBrief, aspect, productId: productSel }) })).json();
+        const ir = await renderStill();
         if (ir.image) { still = ir.image; setImage(ir.image); }
         else { setVideoBusy(false); setVideoStatus(""); alert(ir.error || "Couldn't generate the image for the video."); return; }
       }
@@ -226,14 +265,31 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setSlots(slots.filter((s) => s.id !== id));
     if (open?.id === id) setOpen(null);
   };
+  // Render the still: AI generates a clean SCENE (no can), then we composite the REAL product
+  // PNG on top so the label stays pixel-perfect. No product selected → just the scene.
+  const renderStill = async (): Promise<{ image?: string; error?: string }> => {
+    if (!open || !draft) return { error: "Open a post first." };
+    const aspect = aspectFor(open.channel, open.format);
+    const d = await postJSON("/api/image", { campaignId, brief: editBrief || draft.visualBrief, aspect }, 90000);
+    if (!d.image) return { error: d.error || "Couldn't generate the scene — try again." };
+    if (!productSel) return { image: d.image };
+    try {
+      const pd = await (await fetch(`/api/products/${productSel}`)).json();
+      if (!pd?.data) return { image: d.image };
+      const composed = await compositeProduct(d.image, pd.data, aspect);
+      return { image: composed };
+    } catch {
+      return { image: d.image }; // scene still usable if compositing fails
+    }
+  };
   const genImage = async () => {
     if (!open || !draft) return;
     setImgBusy(true);
     try {
-      const d = await postJSON("/api/image", { campaignId, brief: editBrief || draft.visualBrief, aspect: aspectFor(open.channel, open.format), productId: productSel }, 90000);
-      if (d.image) setImage(d.image); else alert(d.error || "Couldn't generate an image — try again.");
+      const r = await renderStill();
+      if (r.image) setImage(r.image); else alert(r.error || "Couldn't generate an image — try again.");
     } catch (e: any) {
-      alert(e?.name === "AbortError" ? "The image took too long and timed out. Try again, or regenerate without the product." : "Couldn't reach the image service — try again.");
+      alert(e?.name === "AbortError" ? "The image took too long and timed out — try again." : "Couldn't reach the image service — try again.");
     } finally {
       setImgBusy(false);
     }
