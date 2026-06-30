@@ -34,6 +34,42 @@ export async function listVoices(): Promise<VoiceOption[]> {
   return out;
 }
 
+// Browse ElevenLabs' shared voice library for native ITALIAN voices, each with a preview sample
+// to audition. The user adds the ones they like (addSharedVoice) and they become usable for TTS.
+export type SharedVoice = { voiceId: string; ownerId: string; name: string; accent?: string; gender?: string; age?: string; description?: string; previewUrl?: string };
+export async function listSharedItalian(): Promise<SharedVoice[]> {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) return [];
+  try {
+    const r = await fetch("https://api.elevenlabs.io/v1/shared-voices?page_size=60&language=it", { headers: { "xi-api-key": key } });
+    if (!r.ok) return [];
+    const j: any = await r.json();
+    return (j.voices || []).map((v: any) => ({
+      voiceId: v.voice_id, ownerId: v.public_owner_id, name: v.name,
+      accent: v.accent, gender: v.gender, age: v.age, description: v.description, previewUrl: v.preview_url,
+    })).filter((v: SharedVoice) => v.voiceId && v.ownerId);
+  } catch { return []; }
+}
+
+// Add a shared-library voice to the account so it can be used for TTS. Returns the new voice id.
+export async function addSharedVoice(ownerId: string, voiceId: string, name: string): Promise<{ id?: string; error?: string }> {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) return { error: "No ElevenLabs key." };
+  if (!ownerId || !voiceId) return { error: "Missing voice." };
+  try {
+    const r = await fetch(`https://api.elevenlabs.io/v1/voices/add/${ownerId}/${voiceId}`, {
+      method: "POST",
+      headers: { "xi-api-key": key, "content-type": "application/json" },
+      body: JSON.stringify({ new_name: (name || "Italian voice").slice(0, 40) }),
+    });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: `ElevenLabs: ${j?.detail?.message || (typeof j?.detail === "string" ? j.detail : `HTTP ${r.status}`)}` };
+    return { id: j?.voice_id };
+  } catch (e: any) {
+    return { error: `ElevenLabs: ${String(e?.message || e)}` };
+  }
+}
+
 // ElevenLabs TTS — multilingual model handles Italian/Sicilian with the right accent.
 export async function generateElevenVoiceover(text: string, voiceId: string): Promise<{ audio?: string; error?: string }> {
   const key = process.env.ELEVENLABS_API_KEY;

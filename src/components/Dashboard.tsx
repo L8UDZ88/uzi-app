@@ -92,6 +92,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [voBusy, setVoBusy] = useState(false);
   const [voVoice, setVoVoice] = useState("alloy");
   const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
+  const [itVoices, setItVoices] = useState<any[]>([]);     // Italian shared-library voices to audition
+  const [itLoading, setItLoading] = useState(false);
+  const [addingVoice, setAddingVoice] = useState("");
   const [stockQ, setStockQ] = useState("");
   const [clips, setClips] = useState<any[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
@@ -341,6 +344,24 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       setImgBusy(false);
     }
   };
+  const loadItalian = async () => {
+    if (itVoices.length || itLoading) return;
+    setItLoading(true);
+    try { const d = await (await fetch("/api/voiceover/italian")).json(); setItVoices(Array.isArray(d.voices) ? d.voices : []); }
+    catch { /* ignore */ } finally { setItLoading(false); }
+  };
+  const addVoice = async (v: any) => {
+    setAddingVoice(v.voiceId);
+    try {
+      const d = await (await fetch("/api/voiceover/add-voice", { method: "POST", body: JSON.stringify({ ownerId: v.ownerId, voiceId: v.voiceId, name: v.name }) })).json();
+      if (d.id) {
+        const vd = await (await fetch("/api/voiceover/voices")).json();
+        if (Array.isArray(vd.voices)) setVoices(vd.voices);
+        setVoVoice(d.id);
+      } else alert(d.error || "Couldn't add that voice.");
+    } catch { alert("Couldn't add that voice — try again."); }
+    finally { setAddingVoice(""); }
+  };
   const genVoice = async () => {
     if (!open || !draft) return;
     setVoBusy(true); setNoVo(false);
@@ -567,6 +588,23 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                       <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating…" : vo ? "Regenerate 🎙" : "Generate voiceover 🎙"}</Btn>
                       <Btn kind="ghost" className="text-sm" onClick={() => { setNoVo(true); setVo(null); }}>No VO</Btn>
                     </div>
+                    <details className="mt-2" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) loadItalian(); }}>
+                      <summary className="text-xs text-accent cursor-pointer select-none">🇮🇹 Browse Italian voices to try</summary>
+                      <div className="mt-2 space-y-1.5 max-h-72 overflow-auto pr-1">
+                        {itLoading && <div className="text-xs text-zinc-500">Loading Italian voices…</div>}
+                        {!itLoading && itVoices.length === 0 && <div className="text-xs text-zinc-500">No Italian library voices found (needs an ElevenLabs key).</div>}
+                        {itVoices.map((v) => (
+                          <div key={v.voiceId} className="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-2 py-1.5">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium truncate">{v.name}</div>
+                              <div className="text-[10px] text-zinc-500 truncate">{[v.gender, v.accent, v.age, v.description].filter(Boolean).join(" · ")}</div>
+                            </div>
+                            {v.previewUrl && <audio controls preload="none" src={v.previewUrl} className="h-7 w-36" />}
+                            <Btn kind="ghost" className="text-xs" disabled={addingVoice === v.voiceId} onClick={() => addVoice(v)}>{addingVoice === v.voiceId ? "Adding…" : "Use"}</Btn>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   </>)}
                   {vo && !noVo && <audio controls src={vo} className="w-full mt-2" />}
                 </div>
