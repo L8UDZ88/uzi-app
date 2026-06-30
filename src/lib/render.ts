@@ -14,23 +14,23 @@ type TimelineOpts = {
   clipLoopSeg?: number; // if set, tile the clip in segments of this length to cover `length`
   voUrl?: string;
   musicUrl?: string;
+  musicLoopSeg?: number; // tile the music every N seconds to cover the full length (default 30)
   productUrl?: string; // only overlaid in the stock-clip path
+  logoUrl?: string;    // optional brand logo overlay (from Brand Design) — the ONLY on-video overlay
   length: number;      // total video length (kept > voiceover length so VO is never cut)
   width: number;
   height: number;
-  title?: string;
+  title?: string;      // (ignored — no AI text is burned onto the video)
 };
 
 export function buildTimeline(o: TimelineOpts) {
   // Track order = layer order (first track is on top).
   const tracks: any[] = [];
-  // Title/hook overlay (first few seconds) — top layer
-  if (o.title) {
+  // NOTE: no auto text overlay. Any on-video overlay must be a brand asset (logo / brand-name
+  // logotype) from Brand Design — never AI caption text burned onto the video.
+  if (o.logoUrl) {
     tracks.push({
-      clips: [{
-        asset: { type: "title", text: o.title.slice(0, 120), style: "minimal", size: "medium", position: "center" },
-        start: 0, length: Math.min(3.5, o.length), transition: { in: "fade", out: "fade" },
-      }],
+      clips: [{ asset: { type: "image", src: o.logoUrl }, start: 0, length: o.length, fit: "none", scale: 0.18, position: "topLeft", offset: { x: 0.05, y: -0.06 }, opacity: 0.9 }],
     });
   }
   if (o.stillUrl) {
@@ -58,8 +58,17 @@ export function buildTimeline(o: TimelineOpts) {
   }
   // Voiceover
   if (o.voUrl) tracks.push({ clips: [{ asset: { type: "audio", src: o.voUrl }, start: 0, length: o.length }] });
-  // Music bed, ducked under the voiceover
-  if (o.musicUrl) tracks.push({ clips: [{ asset: { type: "audio", src: o.musicUrl, volume: o.voUrl ? 0.15 : 0.6 }, start: 0, length: o.length }] });
+  // Music bed, ducked under the voiceover. Tile the (~30s) score so it ALWAYS covers the full
+  // video length (which is longer than the voiceover) — it never cuts out early.
+  if (o.musicUrl) {
+    const seg = o.musicLoopSeg && o.musicLoopSeg > 0 ? o.musicLoopSeg : 30;
+    const vol = o.voUrl ? 0.15 : 0.6;
+    const mclips: any[] = [];
+    for (let s = 0; s < o.length; s += seg) {
+      mclips.push({ asset: { type: "audio", src: o.musicUrl, volume: vol }, start: s, length: Math.min(seg, o.length - s) });
+    }
+    tracks.push({ clips: mclips });
+  }
 
   return {
     timeline: { background: "#000000", tracks },

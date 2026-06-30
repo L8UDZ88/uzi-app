@@ -55,7 +55,14 @@ export type StoryBible = {
   realms: { id: number; name: string; beat: string }[];
 };
 
-export type StorySeed = { hero?: string; shadow?: string; elixir?: string; world?: string };
+// What the user has already filled in (any subset). The AI fills only the blanks.
+export type PartialBible = {
+  characters?: Record<string, string>;
+  elixir?: string;
+  ordinaryWorld?: string;
+  transformation?: string;
+  realms?: { id: number; beat: string }[];
+};
 
 type Brand = { name?: string; voice?: string; region?: string; product?: string; donts?: string };
 
@@ -63,29 +70,34 @@ export function storyEnabled(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function scaffold(seed: StorySeed, brand: Brand, depth: Depth): StoryBible {
+const nz = (x?: string) => (x && x.trim() ? x.trim() : "");
+
+function merged(provided: PartialBible, ai: any, brand: Brand, depth: Depth): StoryBible {
+  const realms = realmsForDepth(depth);
+  const pc = provided.characters || {};
+  const aic = (ai && ai.characters) || {};
+  const characters: Record<string, string> = {};
+  for (const c of CHARACTERS) {
+    characters[c.id] = nz(pc[c.id]) || nz(aic[c.id]) || (c.id === "mentor" ? (brand.name || "the brand") : "");
+  }
+  const pBeat = new Map<number, string>((provided.realms || []).map((r) => [Number(r.id), nz(r.beat)]));
+  const aBeat = new Map<number, string>(((ai && ai.realms) || []).map((r: any) => [Number(r.id), nz(r.beat)]));
   return {
     depth,
-    characters: Object.fromEntries(
-      CHARACTERS.map((c) => [
-        c.id,
-        c.id === "mentor" ? (brand.name || "the brand") : c.id === "hero" ? (seed.hero || "") : c.id === "shadow" ? (seed.shadow || "") : "",
-      ])
-    ),
-    elixir: seed.elixir || "",
-    ordinaryWorld: seed.world || "",
-    transformation: "",
-    realms: realmsForDepth(depth).map((r) => ({ id: r.id, name: r.name, beat: "" })),
+    characters,
+    elixir: nz(provided.elixir) || nz(ai && ai.elixir),
+    ordinaryWorld: nz(provided.ordinaryWorld) || nz(ai && ai.ordinaryWorld),
+    transformation: nz(provided.transformation) || nz(ai && ai.transformation),
+    realms: realms.map((r) => ({ id: r.id, name: r.name, beat: pBeat.get(r.id) || aBeat.get(r.id) || "" })),
   };
 }
 
 const MODEL = "claude-sonnet-4-6";
 
-// AI fills the whole campaign story from a few seeds + the brand kit.
-export async function generateStoryBible(seed: StorySeed, brand: Brand, depth: Depth): Promise<{ bible: StoryBible; usedAI: boolean; error?: string }> {
-  const base = scaffold(seed, brand, depth);
+// AI fills ONLY the fields the user left blank; anything the user wrote is preserved verbatim.
+export async function generateStoryBible(provided: PartialBible, brand: Brand, depth: Depth): Promise<{ bible: StoryBible; usedAI: boolean; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { bible: base, usedAI: false, error: "Add ANTHROPIC_API_KEY in Vercel to auto-fill." };
+  if (!key) return { bible: merged(provided, null, brand, depth), usedAI: false, error: "Add ANTHROPIC_API_KEY in Vercel to auto-fill." };
 
   const realms = realmsForDepth(depth);
   const depthRule =
@@ -97,7 +109,12 @@ export async function generateStoryBible(seed: StorySeed, brand: Brand, depth: D
   const system =
     `You are a brand story strategist applying the OmniStory framework (the hero's journey as a marketing operating system). ` +
     `CANON, non-negotiable: the HERO is the brand's CUSTOMER (not the brand); the MENTOR is THE BRAND itself; the ELIXIR is the boon the brand helps the customer win (the product + the transformation it unlocks); the SHADOW is what the customer must overcome. ` +
-    `Characters and realms are separate axes. Cast every archetype for THIS brand and write each realm's beat doing that realm's specific narrative job. Concrete and on-brand — no generic mythology filler. ${depthRule}`;
+    `Characters and realms are separate axes. ` +
+    `The user has already written SOME fields — treat those as fixed truth and stay consistent with them; only WRITE the fields marked [BLANK], leaving the rest matching what the user wrote. Concrete and on-brand — no generic mythology filler. ${depthRule}`;
+
+  const pc = provided.characters || {};
+  const pBeat = new Map<number, string>((provided.realms || []).map((r) => [Number(r.id), nz(r.beat)]));
+  const mark = (v: string) => (v ? `[USER WROTE: ${v}]` : "[BLANK]");
 
   const brandCtx =
     `BRAND (the Mentor): ${brand.name || "the brand"}. ` +
@@ -105,25 +122,22 @@ export async function generateStoryBible(seed: StorySeed, brand: Brand, depth: D
     (brand.voice ? `Voice: ${brand.voice}. ` : "") +
     (brand.region ? `Region/world: ${brand.region}. ` : "") +
     (brand.donts ? `Never: ${brand.donts}. ` : "");
-  const seedCtx =
-    `SEEDS the user gave (honor them, expand the rest): ` +
-    `Hero/customer = ${seed.hero || "(infer the ideal customer)"}; ` +
-    `Shadow/problem = ${seed.shadow || "(infer the core problem)"}; ` +
-    `Elixir/payoff = ${seed.elixir || "(infer the transformation the product unlocks)"}; ` +
-    `Ordinary World = ${seed.world || "(infer the customer's before-state)"}.`;
 
-  const charList = CHARACTERS.map((c) => `"${c.id}" (${c.name}: ${c.role})`).join(", ");
-  const realmList = realms.map((r) => `{"id":${r.id},"name":"${r.name}","job":"${r.fn}"}`).join(", ");
+  const stateLines = [
+    ...CHARACTERS.map((c) => `character.${c.id} (${c.name} — ${c.role}): ${mark(nz(pc[c.id]))}`),
+    `elixir (the boon the brand unlocks): ${mark(nz(provided.elixir))}`,
+    `ordinaryWorld (customer's before-state): ${mark(nz(provided.ordinaryWorld))}`,
+    `transformation (after-state): ${mark(nz(provided.transformation))}`,
+    ...realms.map((r) => `realm.${r.id} "${r.name}" (job: ${r.fn}): ${mark(pBeat.get(r.id) || "")}`),
+  ].join("\n");
 
   const user =
-    `${brandCtx}\n${seedCtx}\n\n` +
+    `${brandCtx}\n\nCURRENT STORY (fill only the [BLANK] fields; keep the [USER WROTE] ones consistent):\n${stateLines}\n\n` +
     `Return ONLY valid JSON (no markdown) with exactly these keys:\n` +
     `{"characters": { ${CHARACTERS.map((c) => `"${c.id}": string`).join(", ")} }, ` +
     `"elixir": string, "ordinaryWorld": string, "transformation": string, ` +
     `"realms": [ {"id": number, "name": string, "beat": string} ]}\n` +
-    `- characters: cast each of these for this brand (1-2 sentences each): ${charList}. Mentor must be ${brand.name || "the brand"} itself.\n` +
-    `- ordinaryWorld = the customer's before-state; transformation = the after-state the Elixir unlocks.\n` +
-    `- realms: fill a "beat" for EACH of these realms in order, doing its job: [ ${realmList} ].`;
+    `Mentor must be ${brand.name || "the brand"} itself. Provide a beat for every realm id listed above.`;
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -133,27 +147,13 @@ export async function generateStoryBible(seed: StorySeed, brand: Brand, depth: D
     });
     if (!res.ok) {
       let d = `HTTP ${res.status}`; try { const e: any = await res.json(); d = e?.error?.message || d; } catch {}
-      return { bible: base, usedAI: false, error: d };
+      return { bible: merged(provided, null, brand, depth), usedAI: false, error: d };
     }
     const data: any = await res.json();
     const text: string = (data.content || []).map((b: any) => (b.type === "text" ? b.text : "")).join("").trim();
     const json = JSON.parse(text.replace(/```json/gi, "").replace(/```/g, "").trim());
-    const chars: Record<string, string> = { ...base.characters };
-    for (const c of CHARACTERS) if (json.characters?.[c.id]) chars[c.id] = String(json.characters[c.id]);
-    chars.mentor = chars.mentor || brand.name || "the brand";
-    const beats = new Map<number, string>((json.realms || []).map((r: any) => [Number(r.id), String(r.beat || "")]));
-    return {
-      bible: {
-        depth,
-        characters: chars,
-        elixir: String(json.elixir || base.elixir),
-        ordinaryWorld: String(json.ordinaryWorld || base.ordinaryWorld),
-        transformation: String(json.transformation || ""),
-        realms: realms.map((r) => ({ id: r.id, name: r.name, beat: beats.get(r.id) || "" })),
-      },
-      usedAI: true,
-    };
+    return { bible: merged(provided, json, brand, depth), usedAI: true };
   } catch (e: any) {
-    return { bible: base, usedAI: false, error: String(e?.message || e) };
+    return { bible: merged(provided, null, brand, depth), usedAI: false, error: String(e?.message || e) };
   }
 }

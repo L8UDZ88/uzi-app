@@ -5,6 +5,19 @@ import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
 
+// Measure an audio asset's real duration (seconds) so the video can be sized to fit it.
+function measureAudio(src: string): Promise<number> {
+  return new Promise((res) => {
+    try {
+      const a = new Audio();
+      a.preload = "metadata";
+      a.onloadedmetadata = () => res(isFinite(a.duration) ? a.duration : 0);
+      a.onerror = () => res(0);
+      a.src = src;
+    } catch { res(0); }
+  });
+}
+
 // Load an image (data URL) into an <img> we can draw to a canvas.
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
@@ -89,6 +102,11 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [music, setMusic] = useState<string | null>(null);
   const [musicBusy, setMusicBusy] = useState(false);
   const [editBrief, setEditBrief] = useState("");
+  const [editScript, setEditScript] = useState("");   // editable voiceover script
+  const [noVo, setNoVo] = useState(false);             // explicit "no voiceover" decision
+  const [noMusic, setNoMusic] = useState(false);       // explicit "no music" decision
+  const [voSeconds, setVoSeconds] = useState(0);       // real voiceover duration (for video length)
+  const [musicSeconds, setMusicSeconds] = useState(0); // real music duration
   const [products, setProducts] = useState<{ id: string; name: string; kind?: string }[]>([]);
   const [productSel, setProductSel] = useState<string | null>(null);
   const [sceneStyle, setSceneStyle] = useState<"hero" | "lifestyle">("hero");
@@ -157,10 +175,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
+    setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0);
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
     setEditBrief(d.draft?.visualBrief || "");
+    setEditScript(d.draft?.caption || "");
     const kw = String(d.draft?.visualBrief || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w: string) => w.length > 3).slice(0, 4).join(" ");
     setStockQ(kw || campaign.region || "");
   };
@@ -178,11 +198,20 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setVideoBusy(true); setVideoUrl(null); setVideoStatus("preparing…");
     const aspect = aspectFor(open.channel, open.format);
     const pickedClip = clips.find((c: any) => c.id === picked)?.download || null;
+    // Audio is already decided before we get here (gated). Pass the REAL pieces + their measured
+    // durations so the render sizes the video to the audio instead of guessing.
+    const audio = {
+      voDataUrl: noVo ? undefined : (vo || undefined),
+      voSeconds: noVo ? 0 : voSeconds,
+      noVo,
+      musicUrl: noMusic ? undefined : (music || undefined),
+      musicSeconds: noMusic ? 0 : musicSeconds,
+    };
 
     let renderBody: any;
     if (pickedClip) {
       // Optional stock-clip path (product overlaid).
-      renderBody = { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, clipUrl: pickedClip, productId: productSel, musicUrl: music || undefined };
+      renderBody = { campaignId, brief: editBrief || draft.visualBrief, aspect, clipUrl: pickedClip, productId: productSel, ...audio };
     } else {
       // Primary path: the on-brand still (product baked in) → animate it → render.
       let still = image;
@@ -208,8 +237,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         }
       } catch { /* fall back to zoom */ }
       renderBody = animatedClip
-        ? { campaignId, text: draft.caption, voice: voVoice, aspect, title: draft.headline, clipUrl: animatedClip, loopSeg: 10, musicUrl: music || undefined }
-        : { campaignId, text: draft.caption, brief: editBrief || draft.visualBrief, voice: voVoice, aspect, title: draft.headline, stillDataUrl: still, musicUrl: music || undefined };
+        ? { campaignId, aspect, clipUrl: animatedClip, loopSeg: 10, ...audio }
+        : { campaignId, brief: editBrief || draft.visualBrief, aspect, stillDataUrl: still, ...audio };
     }
 
     setVideoStatus("rendering…");
@@ -230,10 +259,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   };
   const genMusic = async () => {
     if (!open) return;
-    setMusicBusy(true); setMusic(null);
+    setMusicBusy(true); setMusic(null); setNoMusic(false);
     try {
       const an = await postJSON("/api/music", { campaignId, mood: campaign.voice }, 90000);
-      if (an.audioUrl) setMusic(an.audioUrl); else alert(an.error || "Couldn't generate music — try again.");
+      if (an.audioUrl) { setMusic(an.audioUrl); setMusicSeconds(await measureAudio(an.audioUrl)); } else alert(an.error || "Couldn't generate music — try again.");
     } catch (e: any) {
       alert(e?.name === "AbortError" ? "The music timed out — try again." : "Couldn't reach the music service — try again.");
     } finally {
@@ -304,10 +333,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   };
   const genVoice = async () => {
     if (!open || !draft) return;
-    setVoBusy(true);
+    setVoBusy(true); setNoVo(false);
     try {
-      const d = await postJSON("/api/voiceover", { campaignId, text: draft.caption, voice: voVoice }, 60000);
-      if (d.audio) setVo(d.audio); else alert(d.error || "Couldn't generate voiceover.");
+      const d = await postJSON("/api/voiceover", { campaignId, text: editScript || draft.caption, voice: voVoice }, 60000);
+      if (d.audio) { setVo(d.audio); setVoSeconds(await measureAudio(d.audio)); } else alert(d.error || "Couldn't generate voiceover.");
     } catch (e: any) {
       alert(e?.name === "AbortError" ? "The voiceover timed out — try again." : "Couldn't reach the voice service — try again.");
     } finally {
@@ -503,21 +532,64 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     </div>
                   </div>
                 )}
-                <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
-                <div className="flex items-center gap-2">
-                  <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[45%] truncate" title="Voice">
-                    {(voices.length ? voices : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => ({ id: v, name: v }))).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                  </select>
-                  <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
+                {/* 1 · Image */}
+                <div>
+                  <div className="text-xs text-zinc-500 mb-1">1 · Image prompt — edit to adjust the scene, then generate</div>
+                  <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
+                  <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 </div>
-                {vo && <audio controls src={vo} className="w-full" />}
+
                 {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (<>
-                <div className="flex items-center gap-2">
-                  <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
+                {/* 2 · Voiceover decision */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <div className="text-xs text-zinc-500 mb-1">2 · Voiceover — generate it or turn it off</div>
+                  {noVo ? (
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-zinc-400">🔇 No voiceover</span>
+                      <button className="text-accent text-xs" onClick={() => setNoVo(false)}>Add voiceover</button>
+                    </div>
+                  ) : (<>
+                    <textarea value={editScript} onChange={(e) => setEditScript(e.target.value)} rows={2} placeholder={'Voiceover script — edit so it reads cleanly (e.g. "one million ARR", not "$1M ARR")'} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                    <div className="flex items-center gap-2 mt-2">
+                      <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[38%] truncate" title="Voice">
+                        {(voices.length ? voices : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => ({ id: v, name: v }))).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                      </select>
+                      <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating…" : vo ? "Regenerate 🎙" : "Generate voiceover 🎙"}</Btn>
+                      <Btn kind="ghost" className="text-sm" onClick={() => { setNoVo(true); setVo(null); }}>No VO</Btn>
+                    </div>
+                  </>)}
+                  {vo && !noVo && <audio controls src={vo} className="w-full mt-2" />}
                 </div>
-                {music && <audio controls src={music} className="w-full" />}
-                <Btn className="w-full" disabled={videoBusy} onClick={genVideo}>{videoBusy ? `Working… ${videoStatus}` : videoUrl ? "Re-make video 🎬" : "Make video (image → motion) 🎬"}</Btn>
-                <div className="text-[11px] text-zinc-600">Make video lays your voiceover + music over the visual (music ducked under the voice).</div>
+
+                {/* 3 · Music decision */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <div className="text-xs text-zinc-500 mb-1">3 · Music score — generate it or turn it off</div>
+                  {noMusic ? (
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-zinc-400">🔇 No music</span>
+                      <button className="text-accent text-xs" onClick={() => setNoMusic(false)}>Add music</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
+                      <Btn kind="ghost" className="text-sm" onClick={() => { setNoMusic(true); setMusic(null); }}>No music</Btn>
+                    </div>
+                  )}
+                  {music && !noMusic && <audio controls src={music} className="w-full mt-2" />}
+                </div>
+
+                {/* 4 · Video — locked until image + both audio decisions are made */}
+                {(() => {
+                  const base = image || picked;
+                  const need = [!base ? "generate the image" : "", !(vo || noVo) ? "decide on voiceover" : "", !(music || noMusic) ? "decide on music" : ""].filter(Boolean);
+                  const ready = need.length === 0;
+                  return (
+                    <div className="border-t border-zinc-800 pt-3">
+                      <Btn className="w-full" disabled={!ready || videoBusy} onClick={genVideo}>{videoBusy ? `Working… ${videoStatus}` : videoUrl ? "Re-make video 🎬" : "Make video 🎬"}</Btn>
+                      <div className="text-[11px] text-zinc-600 mt-1">{ready ? "Packages your image + voiceover + music — sized to the real audio length." : `Finish first: ${need.join(" · ")}.`}</div>
+                    </div>
+                  );
+                })()}
                 {videoUrl && (
                   <div className="space-y-1">
                     <video controls src={videoUrl} className="w-full rounded-xl bg-black" />

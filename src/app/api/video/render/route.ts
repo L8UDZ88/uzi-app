@@ -15,15 +15,20 @@ export async function POST(req: Request) {
   if (!renderEnabled()) {
     return NextResponse.json({ error: "Video render isn't enabled yet — add SHOTSTACK_API_KEY in Vercel." }, { status: 400 });
   }
-  const { campaignId, text, brief, voice, clipUrl, musicUrl, aspect, title, productId, stillDataUrl, loopSeg } = await req.json();
+  const { campaignId, text, brief, voice, clipUrl, musicUrl, musicSeconds, aspect, productId, stillDataUrl, loopSeg, voDataUrl, voSeconds, noVo } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const origin = new URL(req.url).origin;
 
-  // 1) Voiceover -> host it so the renderer can fetch it by URL.
+  // 1) Voiceover. PREFERRED: the already-generated VO is passed in (so we know its real length).
+  //    Otherwise (legacy) generate from text — unless the user chose "No voiceover".
   const script = voiceScript(text || "");
   let voUrl: string | undefined;
-  if (script) {
+  if (voDataUrl && String(voDataUrl).startsWith("data:")) {
+    const b64 = String(voDataUrl).split(",")[1] || "";
+    const asset = await prisma.renderAsset.create({ data: { mime: "audio/mpeg", data: b64 } });
+    voUrl = `${origin}/api/asset/${asset.id}`;
+  } else if (!noVo && script) {
     const useEleven = elevenEnabled() && voice && !TTS_VOICES.includes(voice);
     const vo = useEleven ? await generateElevenVoiceover(script, voice) : await generateVoiceover(script, voice || "alloy");
     if (vo.audio) {
@@ -53,16 +58,20 @@ export async function POST(req: Request) {
     productUrl = productId ? `${origin}/api/product/${productId}` : undefined;
   }
 
-  // 3) Voiceover length estimate (speech ≈ 14 chars/sec), clamped. Video runs ~1s longer
-  //    than the voiceover so the VO is never cut off.
-  const voLen = Math.max(6, Math.min(40, Math.round((script.length || 120) / 14)));
-  const length = voLen + 1;
+  // 3) Length comes from the REAL audio now that it's decided up front. Prefer the measured
+  //    voiceover duration; if there's no VO, fall back to the music length (capped) or a floor.
+  //    Video runs ~1s longer than the voiceover so the VO is never cut off.
+  const vSec = Number(voSeconds) || 0;
+  const mSec = Number(musicSeconds) || 0;
+  const estimate = (!voUrl || (!vSec && !noVo)) && script ? Math.max(6, Math.min(40, Math.round(script.length / 14))) : 0;
+  const voLen = vSec > 0 ? Math.ceil(vSec) : (voUrl ? estimate : 0);
+  const length = Math.max(10, voLen > 0 ? voLen + 1 : 0, voLen === 0 && mSec > 0 ? Math.min(20, Math.ceil(mSec)) : 0);
   const vertical = aspect !== "wide";
 
   const timeline = buildTimeline({
     stillUrl, clipUrl: clip, clipLoopSeg: clip && loopSeg ? Number(loopSeg) : undefined,
-    voUrl, musicUrl: musicUrl || undefined, productUrl,
-    length, width: vertical ? 1080 : 1920, height: vertical ? 1920 : 1080, title: title || undefined,
+    voUrl, musicUrl: musicUrl || undefined, musicLoopSeg: mSec > 0 ? mSec : 30, productUrl,
+    length, width: vertical ? 1080 : 1920, height: vertical ? 1920 : 1080,
   });
   const r = await shotstackRender(timeline);
   if (!r.id) return NextResponse.json({ error: r.error || "Render failed to start." }, { status: 502 });

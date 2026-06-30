@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { campaignId, seed, depth } = await req.json();
+  const { campaignId, provided, depth } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -18,6 +18,6 @@ export async function POST(req: Request) {
   const brand = { name: c.name, voice: c.voice, region: c.region, product: bk.product || "", donts: bk.donts || "" };
   const d: Depth = ["metahero", "metamap", "mvs", "omnistory"].includes(depth) ? depth : "mvs";
 
-  const r = await generateStoryBible(seed || {}, brand, d);
+  const r = await generateStoryBible(provided || {}, brand, d);
   return NextResponse.json({ bible: r.bible, usedAI: r.usedAI, error: r.error });
 }

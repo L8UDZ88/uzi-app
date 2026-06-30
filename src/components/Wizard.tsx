@@ -82,11 +82,12 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const genStory = async () => {
     setStoryBusy(true);
     const s = cfg.inputs?.story || {};
-    const seed = { hero: s.seedHero, shadow: s.seedShadow, elixir: s.seedElixir, world: s.seedWorld };
     const depth = s.depth || "mvs";
+    // Send everything the user has written; the AI fills only the blanks and keeps the rest.
+    const provided = { characters: s.characters || {}, elixir: s.elixir, ordinaryWorld: s.ordinaryWorld, transformation: s.transformation, realms: s.realms || [] };
     try {
-      const d = await (await fetch("/api/story/generate", { method: "POST", body: JSON.stringify({ campaignId, seed, depth }) })).json();
-      if (d.bible) setStory({ ...d.bible, depth, seedHero: s.seedHero, seedShadow: s.seedShadow, seedElixir: s.seedElixir, seedWorld: s.seedWorld });
+      const d = await (await fetch("/api/story/generate", { method: "POST", body: JSON.stringify({ campaignId, provided, depth }) })).json();
+      if (d.bible) setStory({ ...d.bible, depth });
       else alert(d.error || "Couldn't generate the story — try again.");
     } catch {
       alert("Couldn't reach the story service — try again.");
@@ -252,11 +253,13 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         const s = cfg.inputs?.story || {};
         const depth = s.depth || "mvs";
         const realms = realmsForDepth(depth);
-        const filled = Array.isArray(s.realms) && s.realms.length > 0;
+        const chars = s.characters || {};
+        const beatOf = (id: number) => (s.realms || []).find((x: any) => x.id === id)?.beat || "";
+        const setBeat = (id: number, val: string) => setStory({ realms: realms.map((rr) => ({ id: rr.id, name: rr.name, beat: rr.id === id ? val : beatOf(rr.id) })) });
         return (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Your campaign Story</h3>
-          <p className="text-zinc-400 text-sm mt-1">Your content follows one hero's journey so posts progress instead of repeating. Give a few essentials — AI fills in the rest. You can edit anything.</p>
+          <p className="text-zinc-400 text-sm mt-1">Your content follows one hero's journey so posts progress instead of repeating. Fill in whatever you want — leave the rest blank. The AI button fills only the empty boxes; anything you write is kept.</p>
 
           <div className="mt-5">
             <label className="text-xs text-zinc-400">Depth — how much story to tell</label>
@@ -271,46 +274,47 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3 mt-4">
-            <div className="sm:col-span-2 text-xs text-zinc-500">The 3 essentials (the rest is optional — AI infers it):</div>
-            <input value={s.seedHero || ""} onChange={(e) => setStory({ seedHero: e.target.value })} placeholder="Hero — who is your customer? (e.g. the person who wants something different)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" />
-            <input value={s.seedShadow || ""} onChange={(e) => setStory({ seedShadow: e.target.value })} placeholder="Shadow — what are they up against? (the problem / status quo)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" />
-            <input value={s.seedElixir || ""} onChange={(e) => setStory({ seedElixir: e.target.value })} placeholder="Elixir — the payoff your product unlocks" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" />
-            <input value={s.seedWorld || ""} onChange={(e) => setStory({ seedWorld: e.target.value })} placeholder="Ordinary World — their before-state (optional)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" />
+          <details open className="mt-4">
+            <summary className="text-sm font-semibold cursor-pointer select-none">The cast · {CHARACTERS.length} characters</summary>
+            <div className="mt-2 space-y-2">
+              {CHARACTERS.map((c) => (
+                <div key={c.id}>
+                  <label className="text-[11px] text-zinc-500">{c.name}{c.core ? " ★" : ""} — {c.role}</label>
+                  <textarea value={chars[c.id] || ""} onChange={(e) => setStory({ characters: { ...chars, [c.id]: e.target.value } })} rows={2} placeholder={c.id === "mentor" ? "Your brand (auto-set if left blank)" : "Leave blank for AI to fill"} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+                </div>
+              ))}
+            </div>
+          </details>
+
+          <div className="mt-4 space-y-2">
+            <div>
+              <label className="text-[11px] text-zinc-500">Ordinary World — the customer's before-state</label>
+              <textarea value={s.ordinaryWorld || ""} onChange={(e) => setStory({ ordinaryWorld: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+            </div>
+            <div>
+              <label className="text-[11px] text-zinc-500">Transformation — the after-state</label>
+              <textarea value={s.transformation || ""} onChange={(e) => setStory({ transformation: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+            </div>
+            <div>
+              <label className="text-[11px] text-zinc-500">Elixir — the payoff your product unlocks</label>
+              <textarea value={s.elixir || ""} onChange={(e) => setStory({ elixir: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+            </div>
           </div>
 
-          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Writing your story…" : filled ? "Re-generate story ✨" : "Auto-fill my story with AI ✨"}</Btn>
-          <div className="text-[11px] text-zinc-600 mt-1">You (the brand) are the Mentor. Your customer is the Hero. The product is the Elixir.</div>
-
-          {filled && (
-            <div className="mt-5 space-y-3">
-              <details open>
-                <summary className="text-sm font-semibold cursor-pointer select-none">Cast · {CHARACTERS.length} characters</summary>
-                <div className="mt-2 space-y-2">
-                  {CHARACTERS.map((c) => (
-                    <div key={c.id}>
-                      <label className="text-[11px] text-zinc-500">{c.name}{c.core ? " ★" : ""} — {c.role}</label>
-                      <textarea value={(s.characters || {})[c.id] || ""} onChange={(e) => setStory({ characters: { ...(s.characters || {}), [c.id]: e.target.value } })} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-                    </div>
-                  ))}
+          <details open className="mt-4">
+            <summary className="text-sm font-semibold cursor-pointer select-none">The arc · {realms.length} realms</summary>
+            <div className="mt-2 space-y-2">
+              {realms.map((r, i) => (
+                <div key={r.id}>
+                  <label className="text-[11px] text-zinc-500">{i + 1}. {r.name} — <span className="text-zinc-600">{r.fn}</span></label>
+                  <textarea value={beatOf(r.id)} onChange={(e) => setBeat(r.id, e.target.value)} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
                 </div>
-              </details>
-              <details open>
-                <summary className="text-sm font-semibold cursor-pointer select-none">Realms · the {realms.length}-beat arc</summary>
-                <div className="mt-2 space-y-2">
-                  {realms.map((r, i) => {
-                    const beat = (s.realms || []).find((x: any) => x.id === r.id)?.beat || "";
-                    return (
-                      <div key={r.id}>
-                        <label className="text-[11px] text-zinc-500">{i + 1}. {r.name} — <span className="text-zinc-600">{r.fn}</span></label>
-                        <textarea value={beat} onChange={(e) => { const realmsArr = realms.map((rr) => ({ id: rr.id, name: rr.name, beat: rr.id === r.id ? e.target.value : ((s.realms || []).find((x: any) => x.id === rr.id)?.beat || "") })); setStory({ realms: realmsArr }); }} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </details>
+              ))}
             </div>
-          )}
+          </details>
+
+          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Filling in the blanks…" : "Fill in the blanks with AI ✨"}</Btn>
+          <div className="text-[11px] text-zinc-600 mt-1">You (the brand) are the Mentor. Your customer is the Hero. The product is the Elixir. ★ = the 3 required characters.</div>
         </Card>
         );
       })()}
