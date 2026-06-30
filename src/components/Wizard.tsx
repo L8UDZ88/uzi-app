@@ -230,13 +230,17 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       {step === 3 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Set your 7 pillars</h3>
-          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle which pillars run and how often.</p>
+          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars, set each one's format + which channels it posts to, and how often.</p>
           <div className="space-y-2 mt-5">
             {PILLARS.map((p) => {
-              const on = cfg.pillars?.[p.id]?.on ?? true;
-              const freq = cfg.pillars?.[p.id]?.freq ?? "weekly";
-              const cities = cfg.pillars?.[p.id]?.cities ?? "";
-              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, ...patch } } });
+              const pc = cfg.pillars?.[p.id] || {};
+              const on = pc.on ?? true;
+              const freq = pc.freq ?? "weekly";
+              const cities = pc.cities ?? "";
+              const media = pc.media ?? p.media;
+              const chans: string[] = pc.channels ?? p.channels ?? [];
+              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, media, channels: chans, ...patch } } });
+              const toggleChan = (cid: string) => setP({ channels: chans.includes(cid) ? chans.filter((x) => x !== cid) : [...chans, cid] });
               const isNowin = /\[city\]/i.test(p.name);
               return (
                 <div key={p.id} className={`rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
@@ -247,10 +251,38 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                       <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
                     </select>
                   </div>
-                  {isNowin && on && (
-                    <div className="px-3 pb-3">
-                      <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
-                      <input value={cities} onChange={(e) => setP({ cities: e.target.value })} placeholder="e.g. Catania, Messina, Siracusa" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-1" />
+                  {on && (
+                    <div className="px-3 pb-3 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
+                        <select value={media} onChange={(e) => setP({ media: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                          <option value="video">Video</option>
+                          <option value="visual">Image + Video</option>
+                          <option value="image">Image</option>
+                          <option value="graphic">Graphic</option>
+                          <option value="text">Text</option>
+                          <option value="audio">Audio</option>
+                        </select>
+                      </div>
+                      <div className="flex items-start gap-2 flex-wrap">
+                        <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {CHANNELS.map((c) => {
+                            const sel = chans.includes(c.id);
+                            return (
+                              <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? "border-lime-400 bg-lime-400 text-zinc-950 font-medium" : "border-zinc-700 text-zinc-300"}`}>
+                                {sel ? "✓ " : ""}{c.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {isNowin && (
+                        <div>
+                          <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
+                          <input value={cities} onChange={(e) => setP({ cities: e.target.value })} placeholder="e.g. Catania, Messina, Siracusa" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-1" />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

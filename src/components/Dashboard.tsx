@@ -511,7 +511,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating voiceover…" : vo ? "Regenerate voiceover 🎙" : "Generate voiceover 🎙"}</Btn>
                 </div>
                 {vo && <audio controls src={vo} className="w-full" />}
-                {["reel", "story", "short", "video", "long"].includes((open.format || "").toLowerCase()) && (<>
+                {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (<>
                 <div className="flex items-center gap-2">
                   <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
                 </div>
