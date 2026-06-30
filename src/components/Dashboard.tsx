@@ -20,11 +20,12 @@ async function compositeProduct(bgUrl: string, productUrl: string, aspect?: stri
   const ctx = canvas.getContext("2d");
   if (!ctx) return bgUrl;
   ctx.drawImage(bg, 0, 0, cw, ch);
-  const targetH = ch * (aspect === "wide" ? 0.66 : 0.76);
+  // Size the can to sit IN the scene, not dominate it. Anchored low so it rests on a surface.
+  const targetH = ch * (aspect === "wide" ? 0.52 : 0.6);
   const scale = targetH / (pr.naturalHeight || targetH);
   const pw = (pr.naturalWidth || 1) * scale, ph = (pr.naturalHeight || 1) * scale;
   const x = (cw - pw) / 2;
-  const y = ch - ph - ch * 0.05;
+  const y = ch - ph - ch * 0.1;
   // soft contact shadow on the "ground"
   ctx.save();
   ctx.filter = "blur(20px)";
@@ -90,6 +91,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [editBrief, setEditBrief] = useState("");
   const [products, setProducts] = useState<{ id: string; name: string; kind?: string }[]>([]);
   const [productSel, setProductSel] = useState<string | null>(null);
+  const [sceneStyle, setSceneStyle] = useState<"hero" | "lifestyle">("hero");
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -270,16 +272,29 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const renderStill = async (): Promise<{ image?: string; error?: string }> => {
     if (!open || !draft) return { error: "Open a post first." };
     const aspect = aspectFor(open.channel, open.format);
-    const d = await postJSON("/api/image", { campaignId, brief: editBrief || draft.visualBrief, aspect }, 90000);
+    const briefText = editBrief || draft.visualBrief;
+    // No product → plain scene.
+    if (!productSel) {
+      const d = await postJSON("/api/image", { campaignId, brief: briefText, aspect }, 90000);
+      return d.image ? { image: d.image } : { error: d.error || "Couldn't generate the scene — try again." };
+    }
+    // Lifestyle → product integrated into a people/usage scene (Nano Banana, or gpt fallback).
+    if (sceneStyle === "lifestyle") {
+      const d = await postJSON("/api/image", { campaignId, brief: briefText, aspect, productId: productSel, style: "lifestyle" }, 90000);
+      return d.image ? { image: d.image } : { error: d.error || "Couldn't generate the image — try again." };
+    }
+    // Hero → Nano Banana integrates the real can (label kept). If FAL isn't set, the server
+    // returns a product-free backdrop and we composite the real can in the browser.
+    const d = await postJSON("/api/image", { campaignId, brief: briefText, aspect, productId: productSel, style: "hero" }, 90000);
     if (!d.image) return { error: d.error || "Couldn't generate the scene — try again." };
-    if (!productSel) return { image: d.image };
+    if (!d.backdrop) return { image: d.image }; // already integrated server-side
     try {
       const pd = await (await fetch(`/api/products/${productSel}`)).json();
       if (!pd?.data) return { image: d.image };
       const composed = await compositeProduct(d.image, pd.data, aspect);
       return { image: composed };
     } catch {
-      return { image: d.image }; // scene still usable if compositing fails
+      return { image: d.image }; // backdrop still usable if compositing fails
     }
   };
   const genImage = async () => {
@@ -479,6 +494,22 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   </div>
                 )}
                 {productList.length === 0 && <div className="text-[11px] text-zinc-600">Tip: upload your product (transparent PNG) in Edit setup → Inputs to render it into shots. Logos auto-infuse.</div>}
+                {productSel && (
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500">Scene:</span>
+                      <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+                        <button onClick={() => setSceneStyle("hero")} className={`text-xs px-3 py-1.5 ${sceneStyle === "hero" ? "bg-lime-400 text-zinc-950 font-semibold" : "text-zinc-400"}`}>Hero · perfect label</button>
+                        <button onClick={() => setSceneStyle("lifestyle")} className={`text-xs px-3 py-1.5 ${sceneStyle === "lifestyle" ? "bg-lime-400 text-zinc-950 font-semibold" : "text-zinc-400"}`}>Lifestyle · in-hand</button>
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-zinc-600 mt-1">
+                      {sceneStyle === "hero"
+                        ? "Your real can integrated as a clean hero shot — matched lighting, label kept intact."
+                        : "Your real can placed into a people/usage moment — hands holding it, matched lighting, label kept."}
+                    </div>
+                  </div>
+                )}
                 <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                 <div className="flex items-center gap-2">
                   <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[45%] truncate" title="Voice">

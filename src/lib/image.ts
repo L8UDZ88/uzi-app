@@ -76,6 +76,29 @@ export async function generateImage(brief: string, brand: Brand, aspect?: string
   return { image: null, error: errors.join(" | ") };
 }
 
+// Generate a clean, product-FREE backdrop for the "Hero" composite path. The real product PNG
+// is composited on top in the browser, so this scene must contain NO product and leave a clear
+// hero spot. We use the brief only as mood inspiration and aggressively exclude any container.
+export async function generateBackdrop(brief: string, brand: Brand, aspect?: string): Promise<{ image: string | null; error?: string }> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { image: null, error: "No OPENAI_API_KEY set." };
+  const prompt =
+    `Premium product-photography BACKDROP / environment for ${brand.name || "a modern lifestyle brand"} — an empty scene with no product yet. ` +
+    `Use this only as mood/setting inspiration (do NOT depict the product or any people using it): ${brief}. ` +
+    (brand.region ? `Setting and mood: ${brand.region}. ` : "") +
+    `Composition: a clean surface (stone, wood, marble, bar top, wet rock, or water's edge) in the lower-center with soft, beautiful natural light and plenty of empty space where a single can will be placed. ` +
+    `ABSOLUTELY DO NOT include any cans, bottles, cups, glasses, drinks, beverage containers, hands, or people holding a product — the scene must be completely empty of products. ` +
+    `No text, no logos, no watermarks. Photorealistic, editorial, premium.`;
+  const r = await tryModel("gpt-image-1", key, prompt, aspect);
+  if (r.url) return { image: r.url };
+  // fall back through the chain if gpt-image-1 isn't available
+  for (const model of modelChain().filter((m) => m !== "gpt-image-1")) {
+    const f = await tryModel(model, key, prompt, aspect);
+    if (f.url) return { image: f.url };
+  }
+  return { image: null, error: r.error || "Couldn't generate the scene." };
+}
+
 // Generate the scene WITH the real product placed in it, by giving gpt-image-1 the product
 // PNG as an input image. The model builds the scene around the actual product — aligned,
 // scaled, and lit — so there's no overlay/misalignment and no AI-invented duplicate can.
