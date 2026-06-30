@@ -4,7 +4,7 @@ import { CHANNELS } from "@/lib/constants";
 
 const steps = [
   ["01", "Input", "Connect your content drive or drop a weekly cornerstone asset."],
-  ["02", "7 Pillars", "Set the parameters for each of the 7 content pillars, your way."],
+  ["02", "Content Pillars", "Set the format, channels and source for each content pillar, your way."],
   ["03", "Outputs", "Connect LinkedIn, YouTube, Instagram, Facebook, TikTok, Podcast."],
   ["04", "Calendar", "Uzi builds the calendar and auto-delivers on cadence."],
 ];

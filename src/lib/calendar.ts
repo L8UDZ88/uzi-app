@@ -1,4 +1,4 @@
-import { pillarsFor, activeOutputs, outputsForPillar, PillarCfg, ChannelCfg } from "./constants";
+import { pillarsFor, outputsForPillar, PillarCfg, ChannelCfg } from "./constants";
 
 export type Slot = { date: string; day: string; pillar: string; channel: string; format: string; glyph: string; city?: string };
 
@@ -7,16 +7,15 @@ export type Slot = { date: string; day: string; pillar: string; channel: string;
 // Range defaults to today..+28 days; caller can pass from/to (capped to 3 years, 3000 posts).
 export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence: string, campaignType?: string, fromISO?: string, toISO?: string): Slot[] {
   const active = pillarsFor(campaignType).filter((p) => pillars?.[p.id]?.on ?? true);
-  const outs = activeOutputs(channels || {});
   const perDay = cadence === "machinegun" ? 3 : cadence === "chill" ? 1 : 2;
-  // Precompute each pillar's aligned output set (its channels × correct format).
-  // User overrides from the brand's pillar config win over the code defaults.
+  // Each pillar fans out across its channels, each rendered in the channel's native version of
+  // the pillar's content FORMAT (photo/reel/story/carousel/…). User overrides win over defaults.
   const fanFor = new Map<number, ReturnType<typeof outputsForPillar>>();
   for (const p of active) {
     const cfg = (pillars as any)?.[p.id] || {};
-    const media = cfg.media || p.media;
+    const format = cfg.format || p.format;
     const chans = Array.isArray(cfg.channels) && cfg.channels.length ? cfg.channels : p.channels;
-    fanFor.set(p.id, outputsForPillar(media, outs, chans));
+    fanFor.set(p.id, outputsForPillar(format, chans));
   }
   // "Now in [city]" pillar: cycle through the cities the user entered.
   const nowin = active.find((p) => /\[city\]/i.test(p.name));

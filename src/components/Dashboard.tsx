@@ -108,6 +108,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [itVoices, setItVoices] = useState<any[]>([]);     // Italian shared-library voices to audition
   const [itLoading, setItLoading] = useState(false);
   const [addingVoice, setAddingVoice] = useState("");
+  const [driveMedia, setDriveMedia] = useState<any[]>([]);   // real photos/footage from the Drive folder
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [realClip, setRealClip] = useState<string | null>(null); // picked real footage (video) URL
   const [stockQ, setStockQ] = useState("");
   const [clips, setClips] = useState<any[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
@@ -191,7 +194,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
-    setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0);
+    setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0); setRealClip(null);
+    if (pillarSource(s.pillar) === "real") loadMedia();
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -226,8 +230,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       musicSeconds: noMusic ? 0 : musicSeconds,
     };
 
+    const isReal = pillarSource(open.pillar) === "real";
     let renderBody: any;
-    if (pickedClip) {
+    if (realClip) {
+      // Real footage from the connected folder — use it directly. No AI, no product overlay.
+      const clipSeconds = await measureAudio(realClip);
+      renderBody = { campaignId, aspect, clipUrl: realClip, clipSeconds, ...audio };
+    } else if (pickedClip) {
       // Optional stock-clip path (product overlaid). Pass the clip's real duration so the render
       // slows it to fill the length instead of looping/freezing.
       const pickedDur = clips.find((c: any) => c.id === picked)?.duration || 0;
@@ -245,7 +254,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       // while the product stays locked. The animate prompt pins the can so its label survives.
       // If Kling isn't available it falls back to the still + slow push-in.
       let animatedClip: string | undefined;
-      try {
+      if (!isReal) try {
         setVideoStatus("animating…");
         const an = await (await fetch("/api/video/animate", { method: "POST", body: JSON.stringify({ campaignId, stillDataUrl: still, brief: editBrief || draft.visualBrief, sceneStyle }) })).json();
         if (an.requestId) {
@@ -357,6 +366,34 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       alert(e?.name === "AbortError" ? "The image took too long and timed out — try again." : "Couldn't reach the image service — try again.");
     } finally {
       setImgBusy(false);
+    }
+  };
+  // Is this post's pillar set to use REAL footage (vs AI)? Honors the per-pillar override.
+  const pillarSource = (pillarName: string): string => {
+    const p = pillarsFor(campaign.campaignType).find((x) => x.name === pillarName);
+    if (!p) return "ai";
+    const pc = (campaign.pillars || {})[p.id] || {};
+    return pc.source ?? (p as any).source ?? "ai";
+  };
+  const loadMedia = async () => {
+    if (driveMedia.length || mediaLoading) return;
+    setMediaLoading(true);
+    try {
+      const d = await (await fetch(`/api/google/media?campaignId=${campaignId}`)).json();
+      if (Array.isArray(d.media)) setDriveMedia(d.media);
+      if (d.error && !(d.media || []).length) alert(d.error);
+    } catch { /* ignore */ } finally { setMediaLoading(false); }
+  };
+  const pickMedia = async (m: any) => {
+    const url = `/api/google/file/${m.id}?campaignId=${campaignId}`;
+    if (m.kind === "video") {
+      setRealClip(url); setImage(null);
+    } else {
+      try {
+        const blob = await (await fetch(url)).blob();
+        const dataUrl: string = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(blob); });
+        setImage(dataUrl); setRealClip(null);
+      } catch { alert("Couldn't load that photo — try another."); }
     }
   };
   const loadItalian = async () => {
@@ -578,12 +615,35 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     </div>
                   </div>
                 )}
-                {/* 1 · Image */}
-                <div>
-                  <div className="text-xs text-zinc-500 mb-1">1 · Image prompt — edit to adjust the scene, then generate</div>
-                  <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
-                  <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
-                </div>
+                {/* 1 · Visual — real footage from your folder, or AI generation */}
+                {pillarSource(open.pillar) === "real" ? (
+                  <div>
+                    <div className="text-xs text-zinc-500 mb-1">1 · Your photos & footage — pick one from your connected folder (no AI)</div>
+                    {mediaLoading && <div className="text-xs text-zinc-500">Loading your media…</div>}
+                    {!mediaLoading && driveMedia.length === 0 && <div className="text-xs text-zinc-500">No photos/footage found. Connect a Drive folder in Edit setup → Inputs, or add media to it.</div>}
+                    {driveMedia.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 max-h-72 overflow-auto">
+                        {driveMedia.map((m) => {
+                          const sel = m.kind === "video" && realClip ? realClip.includes(m.id) : false;
+                          return (
+                            <button key={m.id} onClick={() => pickMedia(m)} className={`relative block rounded-lg overflow-hidden border ${sel ? "border-lime-400" : "border-zinc-800"} bg-zinc-900`}>
+                              {m.thumbnailLink ? <img src={m.thumbnailLink} alt="" className="w-full h-20 object-cover" /> : <div className="w-full h-20 flex items-center justify-center text-zinc-600 text-xs">{m.kind}</div>}
+                              {m.kind === "video" && <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">▶</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {realClip && <video src={realClip} controls className="w-full rounded-xl bg-black mt-2" />}
+                    <div className="text-[11px] text-zinc-600 mt-1">Real media — no AI generation. Uzi adds the copy, voiceover, and score.</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs text-zinc-500 mb-1">1 · Image prompt — edit to adjust the scene, then generate</div>
+                    <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
+                    <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
+                  </div>
+                )}
 
                 {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (<>
                 {/* 2 · Voiceover decision */}
@@ -643,8 +703,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
                 {/* 4 · Video — locked until image + both audio decisions are made */}
                 {(() => {
-                  const base = image || picked;
-                  const need = [!base ? "generate the image" : "", !(vo || noVo) ? "decide on voiceover" : "", !(music || noMusic) ? "decide on music" : ""].filter(Boolean);
+                  const base = image || picked || realClip;
+                  const need = [!base ? "pick or generate the visual" : "", !(vo || noVo) ? "decide on voiceover" : "", !(music || noMusic) ? "decide on music" : ""].filter(Boolean);
                   const ready = need.length === 0;
                   return (
                     <div className="border-t border-zinc-800 pt-3">

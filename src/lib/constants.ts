@@ -1,32 +1,40 @@
 // Two campaign types, two 7-pillar maps. The engine is identical; only the
 // pillar logic + generation copy differ. Outputs (channels) are shared.
 
-// media drives which outputs a pillar can be scheduled into (see outputMatchesPillar):
-//  video = motion (Reel/Short/TikTok/YouTube/feed-video) · image = photo post ·
-//  graphic = designed still/announcement · text = text post · audio = podcast.
 export type MediaKind = "video" | "visual" | "image" | "graphic" | "text" | "audio" | "any";
-// channels = channelIds this pillar should publish to (it fans out to all of them that are
-// enabled). Omit to target every channel that fits the pillar's media type.
-export type Pillar = { id: number; name: string; desc: string; src: string; media: MediaKind; channels?: string[] };
+// content format = the SPECIFIC kind of post a pillar produces. Each channel renders it in its
+// own native format (photo→IG Feed/FB Post, reel→IG Reel/TikTok/YT Short, carousel→IG/LinkedIn
+// Carousel, story→IG/FB Story, etc.), so every pillar's output is distinct + channel-appropriate.
+export type ContentFormat = "photo" | "reel" | "story" | "carousel" | "graphic" | "longvideo" | "text";
+export const CONTENT_FORMATS: { id: ContentFormat; name: string }[] = [
+  { id: "photo", name: "Photo" }, { id: "reel", name: "Reel / short video" }, { id: "story", name: "Story" },
+  { id: "carousel", name: "Carousel" }, { id: "graphic", name: "Graphic / announcement" },
+  { id: "longvideo", name: "Long-form video" }, { id: "text", name: "Text post" },
+];
+// channels = channelIds this pillar publishes to (fans out to all of them).
+// source: "real" = use the brand's real photos/footage from the connected Drive folder (no AI image gen).
+export type Pillar = { id: number; name: string; desc: string; src: string; media: MediaKind; format: ContentFormat; channels?: string[]; source?: "ai" | "real" };
 
 export const PILLARS_PHYSICAL: Pillar[] = [
-  { id: 1, name: "Spotted at", desc: "Buyer-journey moment in-store", src: "Real photos", media: "visual", channels: ["instagram", "facebook", "tiktok", "x"] },
-  { id: 2, name: "Transaction", desc: "Normalize the buy / grab-and-go", src: "Real photos", media: "visual", channels: ["x", "instagram", "facebook"] },
-  { id: 3, name: "Now in [city]", desc: "Location announcement on a stock photo of the place", src: "Real / stock", media: "visual", channels: ["instagram", "facebook", "x"] },
-  { id: 4, name: "Store → lifestyle bridge", desc: "Attach the payoff to the errand", src: "Real photos", media: "visual", channels: ["instagram", "facebook", "tiktok"] },
-  { id: 5, name: "Locator", desc: '"Where to find us" graphic + live page', src: "Stockists list", media: "graphic", channels: ["instagram", "facebook"] },
-  { id: 6, name: "Stock / AI stills", desc: "Scale the world cheaply; composite the real product", src: "Stock + AI", media: "visual", channels: ["instagram", "facebook", "tiktok", "youtube"] },
-  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music", src: "Midjourney → Kling", media: "video", channels: ["instagram", "tiktok", "youtube", "facebook"] },
+  { id: 1, name: "Spotted at", desc: "Buyer-journey moment in-store", src: "Real photos", media: "visual", format: "photo", channels: ["instagram", "facebook", "tiktok", "x"] },
+  { id: 2, name: "Transaction", desc: "Normalize the buy / grab-and-go", src: "Real photos", media: "visual", format: "story", channels: ["x", "instagram", "facebook"] },
+  { id: 3, name: "Now in [city]", desc: "Location announcement on a stock photo of the place", src: "Real / stock", media: "visual", format: "graphic", channels: ["instagram", "facebook", "x"] },
+  { id: 4, name: "Store → lifestyle bridge", desc: "Attach the payoff to the errand", src: "Real photos", media: "visual", format: "reel", channels: ["instagram", "facebook", "tiktok"] },
+  { id: 5, name: "Locator", desc: '"Where to find us" graphic + live page', src: "Stockists list", media: "graphic", format: "carousel", channels: ["instagram", "facebook"] },
+  { id: 6, name: "Real Photos & Footage", desc: "Your real photos/footage from the connected folder — no AI; add copy, VO + score", src: "Your Drive folder", media: "visual", format: "photo", channels: ["instagram", "facebook", "tiktok", "youtube"], source: "real" },
+  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music", src: "Midjourney → Kling", media: "video", format: "reel", channels: ["instagram", "tiktok", "youtube", "facebook"] },
+  { id: 8, name: "AI Showcase", desc: "One striking AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", channels: ["instagram", "facebook", "x", "tiktok"], source: "ai" },
 ];
 
 export const PILLARS_DIGITAL: Pillar[] = [
-  { id: 1, name: "Product in Action", desc: "Show the product actually working — UI, demo, before/after", src: "Screen capture / demo", media: "video", channels: ["youtube", "linkedin", "x", "instagram"] },
-  { id: 2, name: "Problem → Outcome", desc: "Name the pain, show the after-state the product delivers", src: "Concept / UI", media: "image", channels: ["linkedin", "x", "instagram"] },
-  { id: 3, name: "Now Shipping", desc: "Launches: new feature, integration, platform, release notes", src: "Release visual", media: "graphic", channels: ["linkedin", "x", "instagram", "facebook"] },
-  { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", channels: ["linkedin", "x", "instagram"] },
-  { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / carousel", media: "video", channels: ["linkedin", "youtube", "x"] },
-  { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", channels: ["linkedin", "x", "instagram"] },
-  { id: 7, name: "Vision / Brand Film", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", channels: ["youtube", "linkedin", "instagram", "tiktok"] },
+  { id: 1, name: "Product in Action", desc: "Show the product actually working — UI, demo, before/after", src: "Screen capture / demo", media: "video", format: "reel", channels: ["youtube", "linkedin", "x", "instagram"] },
+  { id: 2, name: "Problem → Outcome", desc: "Name the pain, show the after-state the product delivers", src: "Concept / UI", media: "image", format: "photo", channels: ["linkedin", "x", "instagram"] },
+  { id: 3, name: "Now Shipping", desc: "Launches: new feature, integration, platform, release notes", src: "Release visual", media: "graphic", format: "graphic", channels: ["linkedin", "x", "instagram", "facebook"] },
+  { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", format: "carousel", channels: ["linkedin", "x", "instagram"] },
+  { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / carousel", media: "video", format: "reel", channels: ["linkedin", "youtube", "x"] },
+  { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", format: "graphic", channels: ["linkedin", "x", "instagram"] },
+  { id: 7, name: "Vision / Brand Film", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", channels: ["youtube", "linkedin", "instagram", "tiktok"] },
+  { id: 8, name: "Product Showcase", desc: "One clean AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", channels: ["linkedin", "x", "instagram"], source: "ai" },
 ];
 
 export const CAMPAIGN_TYPES = [
@@ -104,25 +112,40 @@ export function outputMatchesPillar(media: MediaKind, aspect: Aspect): boolean {
   return (MEDIA_ASPECTS[media] || MEDIA_ASPECTS.any).includes(aspect);
 }
 
-// Fan a pillar out across EVERY enabled channel that fits its media — one post per channel,
-// using that channel's best-fitting format. So "Spotted at" (image) hits all image/video
-// channels, "Ambient film" (video) hits all video channels, "Locator" (graphic) hits IG/FB, etc.
-export function outputsForPillar(media: MediaKind, outs: Output[], channels?: string[]): Output[] {
-  const pref = MEDIA_ASPECTS[media] || MEDIA_ASPECTS.any;
-  const byChannel = new Map<string, Output[]>();
-  for (const o of outs) {
-    if (channels && channels.length && !channels.includes(o.channelId)) continue; // pillar's channel list
-    if (!outputMatchesPillar(media, o.aspect)) continue;
-    const list = byChannel.get(o.channelId) || [];
-    list.push(o);
-    byChannel.set(o.channelId, list);
+// Map a pillar's content format to the right native format on a given channel (with graceful
+// fallback so every channel always gets something appropriate).
+const FORMAT_FALLBACK: Record<ContentFormat, string[]> = {
+  photo:     ["feed", "post", "carousel"],
+  graphic:   ["feed", "post", "carousel"],
+  carousel:  ["carousel", "feed", "post", "thread"],
+  story:     ["story", "reel", "feed", "post"],
+  reel:      ["reel", "short", "video", "feed", "post"],
+  longvideo: ["long", "video", "reel", "short", "feed", "post"],
+  text:      ["post", "thread", "article", "feed"],
+};
+export function channelFormatFor(channelId: string, content: ContentFormat): Format | null {
+  const formats = CHANNEL_FORMATS[channelId] || [];
+  for (const fid of FORMAT_FALLBACK[content] || FORMAT_FALLBACK.photo) {
+    const f = formats.find((x) => x.id === fid);
+    if (f) return f;
   }
-  const picked: Output[] = [];
-  for (const list of byChannel.values()) {
-    list.sort((a, b) => pref.indexOf(a.aspect) - pref.indexOf(b.aspect));
-    picked.push(list[0]); // one (best) format per channel
+  return formats[0] || null;
+}
+
+// Fan a pillar out across its channels — one post per channel, each in the channel's native
+// version of the pillar's content format. So Ambient Film = Reels/Shorts, Locator = Carousels,
+// Spotted at = Feed photos, Transaction = Stories — distinct, channel-appropriate, every time.
+export function outputsForPillar(content: ContentFormat, channels?: string[]): Output[] {
+  const chans = channels && channels.length ? channels : CHANNELS.map((c) => c.id);
+  const out: Output[] = [];
+  for (const cid of chans) {
+    const ch = CHANNELS.find((c) => c.id === cid);
+    if (!ch) continue;
+    const f = channelFormatFor(cid, content);
+    if (!f) continue;
+    out.push({ channelId: cid, channelName: ch.name, glyph: ch.glyph, formatId: f.id, formatName: f.name, aspect: f.aspect });
   }
-  return picked;
+  return out;
 }
 
 export function aspectFor(channelName: string, formatName: string): Aspect {

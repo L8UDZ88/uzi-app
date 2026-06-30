@@ -94,6 +94,22 @@ export async function listFiles(accessToken: string, folderId: string): Promise<
   return j.files || [];
 }
 
+// List the real PHOTOS and VIDEOS in a folder (for the "Real Photos & Footage" pillars).
+export type DriveMedia = { id: string; name: string; mimeType: string; kind: "image" | "video"; thumbnailLink?: string };
+export async function listMedia(accessToken: string, folderId: string): Promise<DriveMedia[]> {
+  const q = `'${folderId.replace(/'/g, "\\'")}' in parents and trashed=false and (mimeType contains 'image/' or mimeType contains 'video/')`;
+  const url = `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,thumbnailLink)&pageSize=200&orderBy=modifiedTime desc`;
+  const r = await driveGet(accessToken, url);
+  if (!r.ok) return [];
+  const j = (await r.json()) as { files?: any[] };
+  return (j.files || []).map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, kind: (f.mimeType || "").startsWith("video/") ? "video" : "image", thumbnailLink: f.thumbnailLink }));
+}
+
+// Stream a Drive file's bytes (image/video) — used to host the real media for preview + render.
+export async function fetchDriveFile(accessToken: string, fileId: string): Promise<Response> {
+  return driveGet(accessToken, `/files/${fileId.replace(/[^a-zA-Z0-9_-]/g, "")}?alt=media`);
+}
+
 // Pull readable text from a file (Google Docs export, plain text, markdown). Other types skipped.
 async function readText(accessToken: string, f: DriveFile): Promise<string> {
   try {

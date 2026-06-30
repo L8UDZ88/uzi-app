@@ -2,10 +2,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { pillarsFor, CHANNELS, CHANNEL_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
+import { pillarsFor, CHANNELS, CHANNEL_FORMATS, CONTENT_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
 import { DEPTHS, CHARACTERS, realmsForDepth } from "@/lib/story";
 
-const STEPS = ["Type", "Profile", "Inputs", "Story", "7 Pillars", "Outputs", "Cadence"];
+const STEPS = ["Type", "Profile", "Inputs", "Story", "Pillars", "Outputs", "Cadence"];
 
 export default function Wizard({ campaignId }: { campaignId: string }) {
   const r = useRouter();
@@ -321,7 +321,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
       {step === 4 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Set your 7 pillars</h3>
+          <h3 className="text-xl font-bold">Set your pillars</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars, set each one's format + which channels it posts to, and how often.</p>
           <div className="space-y-2 mt-5">
             {PILLARS.map((p) => {
@@ -329,9 +329,10 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               const on = pc.on ?? true;
               const freq = pc.freq ?? "weekly";
               const cities = pc.cities ?? "";
-              const media = pc.media ?? p.media;
+              const format = pc.format ?? p.format;
+              const source = pc.source ?? p.source ?? "ai";
               const chans: string[] = pc.channels ?? p.channels ?? [];
-              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, media, channels: chans, ...patch } } });
+              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: chans, ...patch } } });
               const toggleChan = (cid: string) => setP({ channels: chans.includes(cid) ? chans.filter((x) => x !== cid) : [...chans, cid] });
               const isNowin = /\[city\]/i.test(p.name);
               return (
@@ -347,14 +348,17 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                     <div className="px-3 pb-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
-                        <select value={media} onChange={(e) => setP({ media: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
-                          <option value="video">Video</option>
-                          <option value="visual">Image + Video</option>
-                          <option value="image">Image</option>
-                          <option value="graphic">Graphic</option>
-                          <option value="text">Text</option>
-                          <option value="audio">Audio</option>
+                        <select value={format} onChange={(e) => setP({ format: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                          {CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-zinc-400 w-16 shrink-0">Source:</span>
+                        <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+                          <button onClick={() => setP({ source: "ai" })} className={`text-xs px-3 py-1 ${source === "ai" ? "bg-lime-400 text-zinc-950 font-medium" : "text-zinc-400"}`}>AI generated</button>
+                          <button onClick={() => setP({ source: "real" })} className={`text-xs px-3 py-1 ${source === "real" ? "bg-lime-400 text-zinc-950 font-medium" : "text-zinc-400"}`}>Real footage</button>
+                        </div>
+                        {source === "real" && <span className="text-[10px] text-zinc-500">pulls from your connected Drive folder</span>}
                       </div>
                       <div className="flex items-start gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
