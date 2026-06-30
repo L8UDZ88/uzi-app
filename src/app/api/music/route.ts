@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
-import { submitMusic, musicResult, musicEnabled } from "@/lib/music";
+import { generateMusic, musicEnabled } from "@/lib/music";
 
 export const maxDuration = 60;
 
-// POST: start a score (derived from the brand's mood). GET: poll status (?requestId=).
+// Generate an instrumental score derived from the brand's mood. Returns a hosted audio URL.
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,17 +15,10 @@ export async function POST(req: Request) {
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const voice = c.voice || "warm, confident, modern";
-  const moodStr = String(mood || voice);
-  // Sonauto wants a list of style tags. Force instrumental (empty lyrics) in the lib.
-  const tags = ["instrumental", "cinematic", "background score", ...moodStr.split(/[,/]/).map((t) => t.trim()).filter(Boolean)].slice(0, 8);
-  const r = await submitMusic(tags);
-  if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
-  return NextResponse.json({ requestId: r.requestId });
-}
-
-export async function GET(req: Request) {
-  const uid = await getUserId();
-  if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const sp = new URL(req.url).searchParams;
-  return NextResponse.json(await musicResult(sp.get("requestId") || ""));
+  const region = c.region ? `, evoking ${c.region}` : "";
+  const prompt = `Instrumental background score for a premium social ad${region}. Mood: ${mood || voice}. Clean, modern, loopable, leaves room for a voiceover on top. High-quality production, no vocals.`;
+  const negative = "vocals, singing, lyrics, spoken word, low quality";
+  const r = await generateMusic(prompt, negative);
+  if (!r.audioUrl) return NextResponse.json({ error: r.error || "Couldn't generate music — try again." }, { status: 502 });
+  return NextResponse.json({ audioUrl: r.audioUrl });
 }

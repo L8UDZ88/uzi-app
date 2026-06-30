@@ -232,17 +232,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     if (!open) return;
     setMusicBusy(true); setMusic(null);
     try {
-      const an = await (await fetch("/api/music", { method: "POST", body: JSON.stringify({ campaignId, mood: campaign.voice }) })).json();
-      if (!an.requestId) { alert(an.error || "Couldn't start the music."); return; }
-      for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 5000));
-        const st = await (await fetch(`/api/music?requestId=${encodeURIComponent(an.requestId)}`)).json();
-        if (st.audioUrl) { setMusic(st.audioUrl); return; }
-        if (st.error) { alert(st.error); return; }
-      }
-      alert("Music is taking a while — try again.");
+      const an = await postJSON("/api/music", { campaignId, mood: campaign.voice }, 90000);
+      if (an.audioUrl) setMusic(an.audioUrl); else alert(an.error || "Couldn't generate music — try again.");
     } catch (e: any) {
-      alert("Couldn't reach the music service — try again.");
+      alert(e?.name === "AbortError" ? "The music timed out — try again." : "Couldn't reach the music service — try again.");
     } finally {
       setMusicBusy(false);
     }
