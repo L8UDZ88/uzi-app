@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
-import { pillarsFor, activeOutputs, aspectFor } from "@/lib/constants";
+import { pillarsFor, aspectFor } from "@/lib/constants";
 
 // Hard-cap the spoken voiceover script to ~20 seconds (≈230 chars), trimmed at a clean sentence
 // boundary. Ambient Film is exempt (it's meant to run long). This bounds the video length no
@@ -84,7 +84,7 @@ async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any>
   }
 }
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null; beat?: string | null; beatName?: string | null; phase?: string | null; loop?: number | null };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string; script?: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -134,7 +134,6 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
 
   const PILLARS = pillarsFor(campaign.campaignType);
   const pillars = PILLARS.filter((p) => campaign.pillars?.[p.id]?.on ?? true);
-  const outputs = activeOutputs(campaign.channels || {});
 
   useEffect(() => {
     fetch(`/api/social/status?campaignId=${campaignId}`).then((x) => x.json()).then(setSocial).catch(() => {});
@@ -439,6 +438,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     s === "ready" ? "bg-amber-400/20 text-amber-300" :
     s === "failed" ? "bg-red-400/20 text-red-300" :
     "bg-zinc-800 text-zinc-400";
+  const phaseStyle = (p?: string | null) =>
+    p === "Start" ? "bg-sky-400/15 text-sky-300" :
+    p === "Struggle" ? "bg-amber-400/15 text-amber-300" :
+    p === "Success" ? "bg-lime-400/15 text-accent" :
+    p === "Service" ? "bg-fuchsia-400/15 text-fuchsia-300" :
+    "bg-zinc-800 text-zinc-400";
 
   return (
     <div>
@@ -456,13 +461,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       </nav>
       <div className="max-w-6xl mx-auto px-6 py-8">
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}/7</div></Card>
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Outputs</div><div className="text-3xl font-black">{outputs.length}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Posts</div><div className="text-3xl font-black">{slots.length}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{campaign.cadence}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
-          {["calendar", "pillars", "outputs", "deliver"].map((t) => (
+          {["calendar", "pillars", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
@@ -497,6 +502,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     <div className="w-28 text-zinc-300 truncate shrink-0">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
                     <div className="flex-1 text-zinc-100 truncate">{e.city ? e.pillar.replace(/\[city\]/i, e.city) : e.pillar}</div>
                   </button>
+                  {e.beatName && <span className={`hidden md:inline text-[10px] rounded-full px-2 py-0.5 shrink-0 ${phaseStyle(e.phase)}`} title={`${e.phase} · ${e.beatName}${typeof e.loop === "number" ? ` · loop ${e.loop + 1}` : ""}`}>{e.beatName}</span>}
                   <span className={`text-xs rounded-full px-2 py-0.5 shrink-0 ${statusStyle(e.status)}`}>{e.status}</span>
                   <button onClick={(ev) => delPost(e.id, ev)} className="text-zinc-600 hover:text-red-400 px-1.5 shrink-0" title="Delete post">✕</button>
                 </div>
@@ -509,12 +515,6 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <div className="grid sm:grid-cols-2 gap-3">{pillars.map((p) => (
             <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{campaign.pillars?.[p.id]?.freq || "weekly"}</div></Card>
           ))}</div>
-        )}
-        {tab === "outputs" && (
-          <div className="grid sm:grid-cols-3 gap-3">{outputs.map((o) => (
-            <Card key={`${o.channelId}:${o.formatId}`} className="p-4 flex items-center gap-3"><span className="text-xl text-accent">{o.glyph}</span><div><div className="font-semibold text-sm">{o.channelName} · {o.formatName}</div><div className="text-xs text-zinc-500 capitalize">{o.aspect} placement</div></div></Card>
-          ))}
-          {outputs.length === 0 && <div className="text-zinc-500 text-sm p-2">No outputs connected yet — add some in Edit setup → Outputs.</div>}</div>
         )}
         {tab === "deliver" && (
           <div className="space-y-4">
@@ -560,7 +560,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     )}
                   </div>
                 ))}
-                {(social.platforms || []).length === 0 && <div className="text-zinc-500 text-sm">Add outputs in Edit setup → Outputs to see platforms here.</div>}
+                {(social.platforms || []).length === 0 && <div className="text-zinc-500 text-sm">Set channels on your pillars (Edit setup → Pillars) to see platforms here.</div>}
               </div>
             </Card>
 
@@ -576,6 +576,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               <div>
                 <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
                 <div className="font-bold text-lg">{open.city ? open.pillar.replace(/\[city\]/i, open.city) : open.pillar}</div>
+                {open.beatName && <div className="mt-1"><span className={`text-[10px] rounded-full px-2 py-0.5 ${phaseStyle(open.phase)}`}>{open.phase} · {open.beatName}{typeof open.loop === "number" ? ` · loop ${open.loop + 1}` : ""}</span></div>}
               </div>
               <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
             </div>

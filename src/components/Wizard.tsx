@@ -2,15 +2,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { pillarsFor, CHANNELS, CHANNEL_FORMATS, CONTENT_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
-import { DEPTHS, CHARACTERS, realmsForDepth } from "@/lib/story";
+import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
+import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 
-const STEPS = ["Type", "Profile", "Inputs", "Story", "Pillars", "Outputs", "Cadence"];
+const STEPS = ["Offer", "Inputs", "Profile", "Story", "Pillars", "Cadence"];
 
 export default function Wizard({ campaignId }: { campaignId: string }) {
   const r = useRouter();
   const [step, setStep] = useState(0);
-  const [cfg, setCfg] = useState<any>({ campaignType: "physical", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
+  const [cfg, setCfg] = useState<any>({ campaignType: "digital", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
+  const [profileBusy, setProfileBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [drive, setDrive] = useState<any>({ configured: false, connected: false });
   const [folders, setFolders] = useState<any[]>([]);
@@ -33,7 +34,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     fetch(`/api/google/status?campaignId=${campaignId}`).then((x) => x.json()).then(setDrive).catch(() => {});
     fetch(`/api/products?campaignId=${campaignId}`).then((x) => x.json()).then((d) => setProducts(d.products || [])).catch(() => {});
     // Returning from Google OAuth lands here with ?drive=... — jump to the Inputs step.
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(2);
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(1);
   }, [campaignId]);
 
   const uploadProduct = (file: File | undefined, kind: string = "product") => {
@@ -77,22 +78,43 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
   const save = (extra: any = {}) => fetch(`/api/campaigns/${campaignId}`, { method: "PUT", body: JSON.stringify({ ...cfg, ...extra }) });
 
-  // Story Engine: a few seeds -> AI fills the whole campaign story (cast + realm beats).
+  // Story Engine: the campaign's Hero Frame brief. AI drafts every field from the brand kit +
+  // the connected Drive folder ("master brain"); the user reviews/edits. Fill-only-blanks.
   const setStory = (patch: any) => u({ inputs: { ...cfg.inputs, story: { ...(cfg.inputs?.story || {}), ...patch } } });
   const genStory = async () => {
     setStoryBusy(true);
-    const s = cfg.inputs?.story || {};
-    const depth = s.depth || "mvs";
-    // Send everything the user has written; the AI fills only the blanks and keeps the rest.
-    const provided = { characters: s.characters || {}, elixir: s.elixir, ordinaryWorld: s.ordinaryWorld, transformation: s.transformation, realms: s.realms || [] };
+    const provided = cfg.inputs?.story || {};
     try {
-      const d = await (await fetch("/api/story/generate", { method: "POST", body: JSON.stringify({ campaignId, provided, depth }) })).json();
-      if (d.bible) setStory({ ...d.bible, depth });
-      else alert(d.error || "Couldn't generate the story — try again.");
+      const d = await (await fetch("/api/story/heroframe", { method: "POST", body: JSON.stringify({ campaignId, provided }) })).json();
+      if (d.brief) setStory(d.brief);
+      else alert(d.error || "Couldn't draft the story — try again.");
     } catch {
       alert("Couldn't reach the story service — try again.");
     } finally {
       setStoryBusy(false);
+    }
+  };
+
+  // Draft the Brand profile from the connected Drive folder ("master brain"). Fill-only-blanks.
+  const genProfile = async () => {
+    setProfileBusy(true);
+    try {
+      const bk = cfg.inputs?.brandKit || {};
+      const current = { name: cfg.name, tagline: cfg.tagline, region: cfg.region, voice: cfg.voice, brandKit: bk };
+      const d = await (await fetch("/api/profile/draft", { method: "POST", body: JSON.stringify({ campaignId, current }) })).json();
+      if (d.profile) {
+        const p = d.profile;
+        u({
+          tagline: cfg.tagline || p.tagline || "",
+          region: cfg.region || p.region || "",
+          voice: cfg.voice || p.voice || "",
+          inputs: { ...cfg.inputs, brandKit: { ...bk, product: bk.product || p.product || "", donts: bk.donts || p.donts || "", phrases: bk.phrases || p.phrases || "" } },
+        });
+      } else alert(d.error || "Couldn't draft the profile — try again.");
+    } catch {
+      alert("Couldn't reach the profile service — try again.");
+    } finally {
+      setProfileBusy(false);
     }
   };
 
@@ -127,8 +149,8 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
       {step === 0 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">New campaign — what are you launching?</h3>
-          <p className="text-zinc-400 text-sm mt-1">This sets your 7-pillar map. You can run different types for different brands.</p>
+          <h3 className="text-xl font-bold">Your offer — what are you selling?</h3>
+          <p className="text-zinc-400 text-sm mt-1">Digital or physical product. This sets your content-pillar map and story shape.</p>
           <div className="grid sm:grid-cols-2 gap-4 mt-5">
             {CAMPAIGN_TYPES.map((t) => (
               <button key={t.id} onClick={() => u({ campaignType: t.id, pillars: {} })}
@@ -141,10 +163,12 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {step === 1 && (
+      {step === 2 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Brand profile</h3>
-          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this.</p>
+          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this. Let the AI draft it from your connected folder, then review.</p>
+          <Btn className="w-full mt-3" disabled={profileBusy} onClick={genProfile}>{profileBusy ? "Drafting from your brand…" : "Draft profile from my brand ✨"}</Btn>
+          <div className="text-[11px] text-zinc-600 mt-1 mb-3">Pulls from your connected Drive folder (Inputs step). Fills blanks; keeps anything you've written.</div>
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
             <input placeholder="Brand name" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.name || ""} onChange={(e) => u({ name: e.target.value })} />
             <input placeholder="Handle (@brand)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.handle || ""} onChange={(e) => u({ handle: e.target.value })} />
@@ -169,7 +193,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {step === 2 && (
+      {step === 1 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Connect inputs</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
@@ -251,70 +275,37 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
       {step === 3 && (() => {
         const s = cfg.inputs?.story || {};
-        const depth = s.depth || "mvs";
-        const realms = realmsForDepth(depth);
-        const chars = s.characters || {};
-        const beatOf = (id: number) => (s.realms || []).find((x: any) => x.id === id)?.beat || "";
-        const setBeat = (id: number, val: string) => setStory({ realms: realms.map((rr) => ({ id: rr.id, name: rr.name, beat: rr.id === id ? val : beatOf(rr.id) })) });
+        const core = HERO_FRAME_FIELDS.filter((f) => f.core);
+        const extra = HERO_FRAME_FIELDS.filter((f) => !f.core);
         return (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Your campaign Story</h3>
-          <p className="text-zinc-400 text-sm mt-1">Your content follows one hero's journey so posts progress instead of repeating. Fill in whatever you want — leave the rest blank. The AI button fills only the empty boxes; anything you write is kept.</p>
+          <p className="text-zinc-400 text-sm mt-1">This is the Hero Frame your whole calendar tells over time — the one story every post advances. The AI drafts it from your brand kit + connected Drive folder; you review and edit. It feeds every post.</p>
 
-          <div className="mt-5">
-            <label className="text-xs text-zinc-400">Depth — how much story to tell</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
-              {DEPTHS.map((d) => (
-                <button key={d.id} onClick={() => setStory({ depth: d.id })} title={d.blurb}
-                  className={`p-2 rounded-lg border text-xs text-left ${depth === d.id ? "border-lime-400 bg-lime-400/10 text-accent" : "border-zinc-700 text-zinc-300"}`}>
-                  <div className="font-semibold">{d.name}</div>
-                  <div className="text-[10px] text-zinc-500 leading-tight mt-0.5">{d.blurb}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <details open className="mt-4">
-            <summary className="text-sm font-semibold cursor-pointer select-none">The cast · {CHARACTERS.length} characters</summary>
-            <div className="mt-2 space-y-2">
-              {CHARACTERS.map((c) => (
-                <div key={c.id}>
-                  <label className="text-[11px] text-zinc-500">{c.name}{c.core ? " ★" : ""} — {c.role}</label>
-                  <textarea value={chars[c.id] || ""} onChange={(e) => setStory({ characters: { ...chars, [c.id]: e.target.value } })} rows={2} placeholder={c.id === "mentor" ? "Your brand (auto-set if left blank)" : "Leave blank for AI to fill"} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-                </div>
-              ))}
-            </div>
-          </details>
+          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft my story with AI ✨"}</Btn>
+          <div className="text-[11px] text-zinc-600 mt-1">Pulls from your brand kit + connected Drive folder (your "master brain"). Review and edit anything. ★ = the 5 load-bearing inputs.</div>
 
           <div className="mt-4 space-y-2">
-            <div>
-              <label className="text-[11px] text-zinc-500">Ordinary World — the customer's before-state</label>
-              <textarea value={s.ordinaryWorld || ""} onChange={(e) => setStory({ ordinaryWorld: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-            </div>
-            <div>
-              <label className="text-[11px] text-zinc-500">Transformation — the after-state</label>
-              <textarea value={s.transformation || ""} onChange={(e) => setStory({ transformation: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-            </div>
-            <div>
-              <label className="text-[11px] text-zinc-500">Elixir — the payoff your product unlocks</label>
-              <textarea value={s.elixir || ""} onChange={(e) => setStory({ elixir: e.target.value })} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-            </div>
+            <div className="text-xs font-semibold text-accent">The essentials ★</div>
+            {core.map((f) => (
+              <div key={f.id}>
+                <label className="text-[11px] text-zinc-400">{f.name} ★ — <span className="text-zinc-600">{f.hint}</span></label>
+                <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+              </div>
+            ))}
           </div>
 
           <details open className="mt-4">
-            <summary className="text-sm font-semibold cursor-pointer select-none">The arc · {realms.length} realms</summary>
+            <summary className="text-sm font-semibold cursor-pointer select-none">Supporting inputs · {extra.length}</summary>
             <div className="mt-2 space-y-2">
-              {realms.map((r, i) => (
-                <div key={r.id}>
-                  <label className="text-[11px] text-zinc-500">{i + 1}. {r.name} — <span className="text-zinc-600">{r.fn}</span></label>
-                  <textarea value={beatOf(r.id)} onChange={(e) => setBeat(r.id, e.target.value)} rows={2} placeholder="Leave blank for AI to fill" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+              {extra.map((f) => (
+                <div key={f.id}>
+                  <label className="text-[11px] text-zinc-500">{f.name} — <span className="text-zinc-600">{f.hint}</span></label>
+                  <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
                 </div>
               ))}
             </div>
           </details>
-
-          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Filling in the blanks…" : "Fill in the blanks with AI ✨"}</Btn>
-          <div className="text-[11px] text-zinc-600 mt-1">You (the brand) are the Mentor. Your customer is the Hero. The product is the Elixir. ★ = the 3 required characters.</div>
         </Card>
         );
       })()}
@@ -352,13 +343,9 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                           {CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Source:</span>
-                        <div className="flex rounded-lg overflow-hidden border border-zinc-700">
-                          <button onClick={() => setP({ source: "ai" })} className={`text-xs px-3 py-1 ${source === "ai" ? "bg-lime-400 text-zinc-950 font-medium" : "text-zinc-400"}`}>AI generated</button>
-                          <button onClick={() => setP({ source: "real" })} className={`text-xs px-3 py-1 ${source === "real" ? "bg-lime-400 text-zinc-950 font-medium" : "text-zinc-400"}`}>Real footage</button>
-                        </div>
-                        {source === "real" && <span className="text-[10px] text-zinc-500">pulls from your connected Drive folder</span>}
+                        <span className="text-xs text-zinc-300">{source === "real" ? "Real footage — your connected Drive folder" : "AI generated"}</span>
                       </div>
                       <div className="flex items-start gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
@@ -389,39 +376,6 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       )}
 
       {step === 5 && (
-        <Card className="p-7">
-          <h3 className="text-xl font-bold">Connect outputs</h3>
-          <p className="text-zinc-400 text-sm mt-1">Pick a channel, then the formats you want. Each format becomes its own tailored post + preview. (Live publishing is Phase 3.)</p>
-          <div className="space-y-3 mt-5">
-            {CHANNELS.map((c) => {
-              const formats = CHANNEL_FORMATS[c.id] || [];
-              const anyOn = formats.some((f) => cfg.channels?.[`${c.id}:${f.id}`]);
-              return (
-                <div key={c.id} className={`p-4 rounded-xl border ${anyOn ? "border-lime-400/60 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xl text-accent">{c.glyph}</span>
-                    <span className="font-semibold text-sm">{c.name}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {formats.map((f) => {
-                      const key = `${c.id}:${f.id}`;
-                      const on = !!cfg.channels?.[key];
-                      return (
-                        <button key={f.id} onClick={() => u({ channels: { ...cfg.channels, [key]: !on } })}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium border ${on ? "border-lime-400 bg-lime-400 text-zinc-950" : "border-zinc-700 bg-zinc-900 text-zinc-300"}`}>
-                          {on ? "✓ " : ""}{f.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {step === 6 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Cadence</h3>
           <p className="text-zinc-400 text-sm mt-1">How aggressively should the machine fire?</p>

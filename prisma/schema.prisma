@@ -69,6 +69,10 @@ model ScheduleItem {
   channel   String
   format    String   @default("")
   city      String?  // for "Now in [city]" posts — the specific city this post anchors to
+  beat      String?  // Story Arc: the Hero Frame beat id this post carries
+  beatName  String?  // human-readable beat name
+  phase     String?  // 4-S phase: Start | Struggle | Success | Service
+  loop      Int?     // which loop of the arc (0-based) — drives escalation
   status    String   @default("queued") // queued | approved | ready | published | failed
   caption     String?  @db.Text          // snapshot of approved copy, for publishing
   mediaUrl    String?                     // generated/uploaded visual to publish

@@ -14,6 +14,7 @@ async function slotsFor(brandId: string) {
     pillar: s.pillar, channel: s.channel, format: (s as any).format || "",
     glyph: GLYPH[s.channel] || "·",
     status: s.status, city: (s as any).city || null, externalUrl: (s as any).externalUrl || null,
+    beat: (s as any).beat || null, beatName: (s as any).beatName || null, phase: (s as any).phase || null, loop: (s as any).loop ?? null,
   }));
 }
 
@@ -39,7 +40,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // chunk inserts to stay well within limits on large ranges
   for (let i = 0; i < slots.length; i += 500) {
     await prisma.scheduleItem.createMany({
-      data: slots.slice(i, i + 500).map((s) => ({ brandId: c.id, date: new Date(s.date), pillar: s.pillar, channel: s.channel, format: s.format, city: s.city || null })),
+      data: slots.slice(i, i + 500).map((s) => ({ brandId: c.id, date: new Date(s.date), pillar: s.pillar, channel: s.channel, format: s.format, city: s.city || null, beat: s.beat || null, beatName: s.beatName || null, phase: s.phase || null, loop: s.loop ?? null })),
     });
   }
   const mapped = await slotsFor(c.id);
