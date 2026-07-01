@@ -9,7 +9,7 @@ export type Slot = {
 // The calendar walks the STORY ARC (Hero Frame beats). Each posting slot advances ONE beat;
 // the beat picks the pillar (which produces the post) and the copy angle; the pillar fans out
 // to its channels. The arc cycles and escalates each loop (spiral). Physical = 6-beat, Digital = 12.
-export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence: string, campaignType?: string, fromISO?: string, toISO?: string): Slot[] {
+export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence: string, campaignType?: string, fromISO?: string, toISO?: string, omni?: boolean): Slot[] {
   const arc = arcFor(campaignType);
   const allPillars = pillarsFor(campaignType);
   const byName = new Map(allPillars.map((p) => [p.name, p]));
@@ -25,7 +25,7 @@ export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence:
       const cfg = (pillars as any)?.[p.id] || {};
       const format = cfg.format || p.format;
       const chans = Array.isArray(cfg.channels) && cfg.channels.length ? cfg.channels : p.channels;
-      res = outputsForPillar(format, chans);
+      res = outputsForPillar(format, chans, omni);
     }
     outsCache.set(name, res);
     return res;

@@ -52,6 +52,7 @@ model Brand {
   channels  Json     @default("{}")
   inputs    Json     @default("{}")
   cadence   String   @default("steady")
+  omni      Boolean  @default(false) // Omni mode: every pillar fans to ALL channels, format auto-tailored per channel
   onboarded Boolean  @default(false)
   autoDeliver Boolean @default(false) // when true, approved posts auto-publish on schedule
   schedule  ScheduleItem[]

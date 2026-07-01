@@ -25,7 +25,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     data: {
       campaignType: b.campaignType, name: b.name, handle: b.handle, tagline: b.tagline,
       region: b.region, voice: b.voice, pillars: b.pillars, channels: b.channels,
-      inputs: b.inputs, cadence: b.cadence, onboarded: b.onboarded,
+      inputs: b.inputs, cadence: b.cadence, omni: b.omni, onboarded: b.onboarded,
     },
   });
   return NextResponse.json({ campaign });

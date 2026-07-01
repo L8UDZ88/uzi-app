@@ -13,28 +13,36 @@ export const CONTENT_FORMATS: { id: ContentFormat; name: string }[] = [
 ];
 // channels = channelIds this pillar publishes to (fans out to all of them).
 // source: "real" = use the brand's real photos/footage from the connected Drive folder (no AI image gen).
-export type Pillar = { id: number; name: string; desc: string; src: string; media: MediaKind; format: ContentFormat; channels?: string[]; source?: "ai" | "real" };
+// formats = the ONLY formats applicable to this pillar (dropdown is narrowed to these; the first
+// is the sensible default). Carousel is intentionally excluded everywhere for now (reserved for
+// post-summary decks later). `format` must be one of `formats`.
+export type Pillar = { id: number; name: string; desc: string; src: string; media: MediaKind; format: ContentFormat; formats?: ContentFormat[]; channels?: string[]; source?: "ai" | "real" };
+
+// Applicable formats for a pillar (falls back to everything except carousel).
+export function formatsForPillar(p: Pillar): ContentFormat[] {
+  return p.formats && p.formats.length ? p.formats : CONTENT_FORMATS.map((f) => f.id).filter((id) => id !== "carousel");
+}
 
 export const PILLARS_PHYSICAL: Pillar[] = [
-  { id: 1, name: "Spotted at", desc: "Buyer-journey moment in-store", src: "Real photos", media: "visual", format: "photo", channels: ["instagram", "facebook", "x"] },
-  { id: 2, name: "Transaction", desc: "Normalize the buy / grab-and-go", src: "Real photos", media: "visual", format: "story", channels: ["instagram", "facebook"] },
-  { id: 3, name: "Now in [city]", desc: "Location announcement on a stock photo of the place", src: "Real / stock", media: "visual", format: "graphic", channels: ["instagram", "facebook", "x"] },
-  { id: 4, name: "Store → lifestyle bridge", desc: "Attach the payoff to the errand", src: "Real photos", media: "visual", format: "reel", channels: ["instagram", "facebook", "tiktok"] },
-  { id: 5, name: "Locator", desc: '"Where to find us" graphic + live page', src: "Stockists list", media: "graphic", format: "carousel", channels: ["instagram", "linkedin"] },
-  { id: 6, name: "Real Photos & Footage", desc: "Your real photos/footage from the connected folder — no AI; add copy, VO + score", src: "Your Drive folder", media: "visual", format: "photo", channels: ["instagram", "facebook"], source: "real" },
-  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music", src: "Midjourney → Kling", media: "video", format: "reel", channels: ["instagram", "facebook", "tiktok", "youtube"] },
-  { id: 8, name: "AI Showcase", desc: "One striking AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", channels: ["instagram", "facebook", "x"], source: "ai" },
+  { id: 1, name: "Spotted at", desc: "Buyer-journey moment in-store", src: "Real photos", media: "visual", format: "photo", formats: ["photo", "story", "reel"], channels: ["instagram", "facebook", "x"] },
+  { id: 2, name: "Transaction", desc: "Normalize the buy / grab-and-go", src: "Real photos", media: "visual", format: "story", formats: ["story", "photo", "reel"], channels: ["instagram", "facebook"] },
+  { id: 3, name: "Now in [city]", desc: "Location announcement on a stock photo of the place", src: "Real / stock", media: "visual", format: "graphic", formats: ["graphic", "photo"], channels: ["instagram", "facebook", "x"] },
+  { id: 4, name: "Store → lifestyle bridge", desc: "Attach the payoff to the errand", src: "Real photos", media: "visual", format: "reel", formats: ["reel", "photo", "story"], channels: ["instagram", "facebook", "tiktok"] },
+  { id: 5, name: "Locator", desc: '"Where to find us" graphic + live page', src: "Stockists list", media: "graphic", format: "graphic", formats: ["graphic", "photo"], channels: ["instagram", "facebook"] },
+  { id: 6, name: "Real Photos & Footage", desc: "Your real photos/footage from the connected folder — no AI; add copy, VO + score", src: "Your Drive folder", media: "visual", format: "photo", formats: ["photo", "reel", "story"], channels: ["instagram", "facebook"], source: "real" },
+  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music", src: "Midjourney → Kling", media: "video", format: "reel", formats: ["reel", "longvideo"], channels: ["instagram", "facebook", "tiktok", "youtube"] },
+  { id: 8, name: "AI Showcase", desc: "One striking AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["instagram", "facebook", "x"], source: "ai" },
 ];
 
 export const PILLARS_DIGITAL: Pillar[] = [
-  { id: 1, name: "Product in Action", desc: "Show the product actually working — UI, demo, before/after", src: "Screen capture / demo", media: "video", format: "reel", channels: ["youtube", "instagram", "tiktok"] },
-  { id: 2, name: "Problem → Outcome", desc: "Name the pain, show the after-state the product delivers", src: "Concept / UI", media: "image", format: "photo", channels: ["linkedin", "x", "instagram"] },
-  { id: 3, name: "Now Shipping", desc: "Launches: new feature, integration, platform, release notes", src: "Release visual", media: "graphic", format: "graphic", channels: ["linkedin", "x", "instagram", "facebook"] },
-  { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", format: "carousel", channels: ["linkedin", "instagram"] },
-  { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / carousel", media: "video", format: "carousel", channels: ["linkedin", "instagram"] },
-  { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", format: "graphic", channels: ["linkedin", "x", "instagram"] },
-  { id: 7, name: "Vision / Brand Film", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", channels: ["youtube", "instagram", "tiktok"] },
-  { id: 8, name: "Product Showcase", desc: "One clean AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", channels: ["linkedin", "x", "instagram"], source: "ai" },
+  { id: 1, name: "Product in Action", desc: "Show the product actually working — UI, demo, before/after", src: "Screen capture / demo", media: "video", format: "reel", formats: ["reel", "longvideo", "photo"], channels: ["youtube", "instagram", "tiktok"] },
+  { id: 2, name: "Problem → Outcome", desc: "Name the pain, show the after-state the product delivers", src: "Concept / UI", media: "image", format: "photo", formats: ["photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
+  { id: 3, name: "Now Shipping", desc: "Launches: new feature, integration, platform, release notes", src: "Release visual", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram", "facebook"] },
+  { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", format: "graphic", formats: ["graphic", "photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
+  { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / POV", media: "video", format: "text", formats: ["text", "reel", "longvideo", "graphic"], channels: ["linkedin", "x"] },
+  { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram"] },
+  { id: 7, name: "Vision / Brand Film", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", formats: ["longvideo", "reel"], channels: ["youtube"] },
+  { id: 8, name: "Product Showcase", desc: "One clean AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["linkedin", "x", "instagram"], source: "ai" },
 ];
 
 export const CAMPAIGN_TYPES = [
@@ -142,7 +150,7 @@ export const FORMAT_CHANNELS: Record<ContentFormat, string[]> = {
   reel:      ["instagram", "facebook", "tiktok", "youtube"],
   story:     ["instagram", "facebook"],
   carousel:  ["instagram", "linkedin"],
-  longvideo: ["youtube", "instagram", "facebook", "tiktok"],
+  longvideo: ["youtube"],
   text:      ["linkedin", "x", "facebook"],
 };
 export function channelsForFormat(content: ContentFormat): string[] {
@@ -155,11 +163,12 @@ export function channelSupportsFormat(channelId: string, content: ContentFormat)
 // Fan a pillar out across its channels — one post per channel, each in the channel's native
 // version of the pillar's content format. So Ambient Film = Reels/Shorts, Locator = Carousels,
 // Spotted at = Feed photos, Transaction = Stories — distinct, channel-appropriate, every time.
-export function outputsForPillar(content: ContentFormat, channels?: string[]): Output[] {
+export function outputsForPillar(content: ContentFormat, channels?: string[], omni?: boolean): Output[] {
+  // OMNI MODE: fan to EVERY channel, tailoring the format to each channel's native version of the
+  // content (channelFormatFor always adapts). NORMAL: only the channels this format natively carries.
   const allowed = channelsForFormat(content);
-  const base = channels && channels.length ? channels : CHANNELS.map((c) => c.id);
-  // Only fan out to channels that can natively carry this format.
-  const chans = base.filter((cid) => allowed.includes(cid));
+  const base = omni ? CHANNELS.map((c) => c.id) : (channels && channels.length ? channels : CHANNELS.map((c) => c.id));
+  const chans = omni ? base : base.filter((cid) => allowed.includes(cid));
   const out: Output[] = [];
   for (const cid of chans) {
     const ch = CHANNELS.find((c) => c.id === cid);

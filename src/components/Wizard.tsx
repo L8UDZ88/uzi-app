@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForFormat } from "@/lib/constants";
+import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForFormat, formatsForPillar } from "@/lib/constants";
 import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 
 const STEPS = ["Offer", "Inputs", "Profile", "Story", "Pillars", "Cadence"];
@@ -28,6 +28,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         campaignType: c.campaignType || "physical",
         name: c.name, handle: c.handle, tagline: c.tagline, region: c.region, voice: c.voice,
         pillars: c.pillars || {}, channels: c.channels || {}, inputs: c.inputs || {}, cadence: c.cadence || "steady",
+        omni: c.omni ?? false,
       });
       setLoaded(true);
     });
@@ -314,13 +315,30 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
         <Card className="p-7">
           <h3 className="text-xl font-bold">Set your pillars</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars, set each one's format + which channels it posts to, and how often.</p>
+
+          {/* OMNI MODE — one master switch: every pillar → all channels, format auto-tailored per channel. */}
+          <div className="mt-5 flex flex-col items-center text-center gap-2 rounded-2xl border border-lime-400/40 bg-lime-400/5 p-4">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold tracking-tight">⚡ Omni mode</span>
+              <button onClick={() => u({ omni: !cfg.omni })} className={`w-11 h-6 rounded-full relative shrink-0 ${cfg.omni ? "bg-accent" : "bg-zinc-700"}`}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${cfg.omni ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+              <span className={`text-xs font-medium ${cfg.omni ? "text-lime-300" : "text-zinc-500"}`}>{cfg.omni ? "ON" : "OFF"}</span>
+            </div>
+            <p className="text-xs text-zinc-400 max-w-md">Every pillar posts to <b>all channels</b>, with the format auto-tailored per channel — one source asset atomized into a native post everywhere. Pulls from your connected library first, AI as fallback. Turn off to fine-tune each pillar by hand.</p>
+          </div>
+
           <div className="space-y-2 mt-5">
             {PILLARS.map((p) => {
               const pc = cfg.pillars?.[p.id] || {};
               const on = pc.on ?? true;
               const freq = pc.freq ?? "weekly";
               const cities = pc.cities ?? "";
-              const format = pc.format ?? p.format;
+              // Only formats applicable to this pillar are offered (carousel excluded everywhere for now).
+              const applicableFormats = formatsForPillar(p);
+              const savedFormat = pc.format ?? p.format;
+              // Auto-migrate any now-unavailable saved format (e.g. old carousel) to the pillar default.
+              const format = applicableFormats.includes(savedFormat) ? savedFormat : p.format;
               const source = pc.source ?? p.source ?? "ai";
               const chans: string[] = pc.channels ?? p.channels ?? [];
               const allowedChans = channelsForFormat(format);
@@ -340,12 +358,21 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                       <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
                     </select>
                   </div>
-                  {on && (
+                  {on && cfg.omni && (
+                    <div className="px-3 pb-3">
+                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-zinc-400">
+                        <span className="rounded-full bg-lime-400/15 text-lime-300 px-2 py-0.5 font-medium">Omni</span>
+                        <span>All channels · format auto-tailored per channel · from your library (AI fallback)</span>
+                        <span className="ml-auto text-zinc-500 shrink-0">→ {CHANNELS.length} posts</span>
+                      </div>
+                    </div>
+                  )}
+                  {on && !cfg.omni && (
                     <div className="px-3 pb-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
                         <select value={format} onChange={(e) => setFormat(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
-                          {CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          {applicableFormats.map((fid) => { const f = CONTENT_FORMATS.find((x) => x.id === fid); return f ? <option key={f.id} value={f.id}>{f.name}</option> : null; })}
                         </select>
                       </div>
                       <div className="flex items-center gap-2">

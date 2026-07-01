@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const body = await req.json().catch(() => ({}));
   const from = typeof body.from === "string" ? body.from : undefined;
   const to = typeof body.to === "string" ? body.to : undefined;
-  const slots = buildCalendar(c.pillars as any, c.channels as any, c.cadence, (c as any).campaignType, from, to);
+  const slots = buildCalendar(c.pillars as any, c.channels as any, c.cadence, (c as any).campaignType, from, to, (c as any).omni);
   await prisma.scheduleItem.deleteMany({ where: { brandId: c.id } });
   // chunk inserts to stay well within limits on large ranges
   for (let i = 0; i < slots.length; i += 500) {
