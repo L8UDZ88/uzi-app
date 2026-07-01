@@ -195,7 +195,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
     setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0); setRealClip(null);
     if (pillarSource(s.pillar) === "real") loadMedia();
-    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city }) });
+    const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city, beat: s.beat, loop: s.loop }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
     setEditBrief(d.draft?.visualBrief || "");

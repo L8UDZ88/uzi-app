@@ -4,6 +4,10 @@
 // so the app always returns a draft.
 
 import { generateDraft, Draft } from "./generate";
+import { HERO_FRAME_FIELDS } from "./heroframe";
+
+// The Story Arc context for a post: which beat it carries + the campaign's Hero Frame brief + loop.
+export type StoryCtx = { beat: { name: string; phase: string; job: string; keys: string[] }; brief: Record<string, string>; loop: number };
 
 type Brand = { name: string; handle?: string; tagline?: string; region?: string; voice?: string; sourceText?: string; city?: string; product?: string; phrases?: string; donts?: string; language?: string };
 
@@ -46,7 +50,7 @@ function capCaption(text: string, isFilm: boolean): string {
   return (sp > max * 0.5 ? slice.slice(0, sp) : slice).trim() + ".";
 }
 
-export async function generateDraftAI(pillar: string, channel: string, format: string, brand: Brand): Promise<{ draft: Draft; usedAI: boolean }> {
+export async function generateDraftAI(pillar: string, channel: string, format: string, brand: Brand, story?: StoryCtx): Promise<{ draft: Draft; usedAI: boolean }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { draft: generateDraft(pillar, channel, format, brand), usedAI: false }; // no key yet → templates
 
@@ -54,6 +58,24 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
   const fmt = (format || "").toLowerCase();
   const fmtHint = FORMAT_HINT[fmt] || "";
   const src = (brand.sourceText || "").trim();
+
+  // STORY BEAT conditioning: this post must execute a specific Hero Frame beat, grounded in the
+  // campaign's Hero Frame brief. Escalates on later loops (the spiral).
+  let beatBlock = "";
+  let beatTone = "";
+  if (story?.beat) {
+    const b = story.beat;
+    const nameOf = (k: string) => HERO_FRAME_FIELDS.find((f) => f.id === k)?.name || k;
+    const facts = (b.keys || []).map((k) => { const v = (story.brief || {})[k]; return v && v.trim() ? `- ${nameOf(k)}: ${v.trim()}` : ""; }).filter(Boolean).join("\n");
+    beatTone = ` This is brand STORY content: write as a mentor speaking to the hero (the customer) — calm authority, causal (make the outcome feel earned, never hyped), specific to the hero's real world. No generic inspiration, no "unlock/unleash/empower" filler, no exclamation-point energy.`;
+    beatBlock =
+      `\n\nSTORY BEAT — this post is the "${b.name}" beat (the ${b.phase} phase of the campaign's ongoing story arc).\n` +
+      `THE JOB OF THIS POST: ${b.job}\n` +
+      (facts ? `Ground it in these facts from the campaign's Hero Frame:\n${facts}\n` : "") +
+      (story.loop > 0 ? `This is loop ${story.loop + 1} of the arc — ESCALATE: raise the stakes and reach for a bigger version of the dream than earlier loops, so the story climbs over time.\n` : "") +
+      `Write copy that DELIVERS this beat's job specifically — not a generic post about the pillar. The reader should feel this exact moment in the journey.`;
+  }
+
   const system =
     `You are the senior social copywriter for ${brand.name || "the brand"}. ` +
     `${languageRule(brand.language)} ` +
@@ -67,7 +89,8 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
     (src
       ? `\n\nGround every post in the brand's REAL source material below — use its facts, product names, claims, and phrasing. Do not invent facts that contradict it.\n<source_material>\n${src.slice(0, 9000)}\n</source_material>\n`
       : "") +
-    `Write platform-native, original copy. Never use a generic template. Vary the hook and angle every time — no two posts should feel alike.`;
+    `Write platform-native, original copy. Never use a generic template. Vary the hook and angle every time — no two posts should feel alike.` +
+    beatTone;
 
   // The spoken voiceover ("script") is kept SHORT to bound video length — except Ambient Film,
   // which is meant to run long. The on-screen caption can still be full-length and rich.
@@ -76,7 +99,8 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
     ? `"script": an evocative spoken voiceover for an ambient brand film — up to ~90 words.`
     : `"script": a SHORT spoken voiceover, AT MOST 40 words (~15-18 seconds when read aloud). Keep it punchy and tight — this directly bounds the video length, so do NOT just reuse the caption.`;
   const user =
-    `Write ONE ${ch} ${format || "post"} for this content pillar: "${pillar}".\n` +
+    `Write ONE ${ch} ${format || "post"} for this content pillar: "${pillar}".` +
+    beatBlock + `\n` +
     (fmtHint ? fmtHint + "\n" : "") +
     `Return ONLY valid JSON (no markdown, no commentary) with exactly these keys:\n` +
     `{"headline": string, "caption": string, "script": string, "hashtags": string[] (3-6 items, each starting with #), "visualBrief": string (one sentence of art direction), "cta": string (short)}\n` +
