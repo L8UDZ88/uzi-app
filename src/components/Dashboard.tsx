@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import { pillarsFor, aspectFor } from "@/lib/constants";
+import { arcFor } from "@/lib/beats";
 
 // Hard-cap the spoken voiceover script to ~20 seconds (≈230 chars), trimmed at a clean sentence
 // boundary. Ambient Film is exempt (it's meant to run long). This bounds the video length no
@@ -577,6 +578,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
                 <div className="font-bold text-lg">{open.city ? open.pillar.replace(/\[city\]/i, open.city) : open.pillar}</div>
                 {open.beatName && <div className="mt-1"><span className={`text-[10px] rounded-full px-2 py-0.5 ${phaseStyle(open.phase)}`}>{open.phase} · {open.beatName}{typeof open.loop === "number" ? ` · loop ${open.loop + 1}` : ""}</span></div>}
+                {open.beat && (() => { const jb = arcFor(campaign.campaignType).find((b) => b.id === open.beat)?.job; return jb ? <div className="text-[11px] text-zinc-500 mt-1">Story job: {jb}</div> : null; })()}
               </div>
               <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl">✕</button>
             </div>
