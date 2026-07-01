@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
-import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES } from "@/lib/constants";
+import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForFormat } from "@/lib/constants";
 import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 
 const STEPS = ["Offer", "Inputs", "Profile", "Story", "Pillars", "Cadence"];
@@ -323,8 +323,13 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               const format = pc.format ?? p.format;
               const source = pc.source ?? p.source ?? "ai";
               const chans: string[] = pc.channels ?? p.channels ?? [];
-              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: chans, ...patch } } });
-              const toggleChan = (cid: string) => setP({ channels: chans.includes(cid) ? chans.filter((x) => x !== cid) : [...chans, cid] });
+              const allowedChans = channelsForFormat(format);
+              // Only channels this format can natively carry are eligible; drop any stragglers.
+              const selChans = chans.filter((cid) => allowedChans.includes(cid));
+              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: selChans, ...patch } } });
+              // Changing format prunes selected channels to the new format's compatible set.
+              const setFormat = (f: string) => setP({ format: f, channels: selChans.filter((cid) => channelsForFormat(f).includes(cid)) });
+              const toggleChan = (cid: string) => setP({ channels: selChans.includes(cid) ? selChans.filter((x) => x !== cid) : [...selChans, cid] });
               const isNowin = /\[city\]/i.test(p.name);
               return (
                 <div key={p.id} className={`rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
@@ -339,7 +344,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                     <div className="px-3 pb-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
-                        <select value={format} onChange={(e) => setP({ format: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                        <select value={format} onChange={(e) => setFormat(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
                           {CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                       </div>
@@ -350,8 +355,8 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                       <div className="flex items-start gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
                         <div className="flex flex-wrap gap-1.5">
-                          {CHANNELS.map((c) => {
-                            const sel = chans.includes(c.id);
+                          {CHANNELS.filter((c) => allowedChans.includes(c.id)).map((c) => {
+                            const sel = selChans.includes(c.id);
                             return (
                               <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? "border-lime-400 bg-lime-400 text-zinc-950 font-medium" : "border-zinc-700 text-zinc-300"}`}>
                                 {sel ? "✓ " : ""}{c.name}
@@ -359,7 +364,9 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                             );
                           })}
                         </div>
+                        <span className="text-[11px] text-zinc-500 pt-1 ml-auto shrink-0">→ {selChans.length} {selChans.length === 1 ? "post" : "posts"}</span>
                       </div>
+                      <div className="text-[11px] text-zinc-600">Only channels that natively carry a {CONTENT_FORMATS.find((f) => f.id === format)?.name || format} are shown.</div>
                       {isNowin && (
                         <div>
                           <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
