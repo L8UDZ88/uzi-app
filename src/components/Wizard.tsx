@@ -328,7 +328,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               const selChans = chans.filter((cid) => allowedChans.includes(cid));
               const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: selChans, ...patch } } });
               // Changing format prunes selected channels to the new format's compatible set.
-              const setFormat = (f: string) => setP({ format: f, channels: selChans.filter((cid) => channelsForFormat(f).includes(cid)) });
+              const setFormat = (f: any) => setP({ format: f, channels: selChans.filter((cid) => channelsForFormat(f).includes(cid)) });
               const toggleChan = (cid: string) => setP({ channels: selChans.includes(cid) ? selChans.filter((x) => x !== cid) : [...selChans, cid] });
               const isNowin = /\[city\]/i.test(p.name);
               return (
