@@ -95,7 +95,7 @@ export async function listFiles(accessToken: string, folderId: string): Promise<
 }
 
 // List the real PHOTOS and VIDEOS in a folder (for the "Real Photos & Footage" pillars).
-export type DriveMedia = { id: string; name: string; mimeType: string; kind: "image" | "video"; thumbnailLink?: string };
+export type DriveMedia = { id: string; name: string; mimeType: string; kind: "image" | "video" | "audio"; thumbnailLink?: string };
 export async function listMedia(accessToken: string, folderId: string): Promise<DriveMedia[]> {
   const q = `'${folderId.replace(/'/g, "\\'")}' in parents and trashed=false and (mimeType contains 'image/' or mimeType contains 'video/')`;
   const url = `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,thumbnailLink)&pageSize=200&orderBy=modifiedTime desc`;
@@ -103,6 +103,16 @@ export async function listMedia(accessToken: string, folderId: string): Promise<
   if (!r.ok) return [];
   const j = (await r.json()) as { files?: any[] };
   return (j.files || []).map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, kind: (f.mimeType || "").startsWith("video/") ? "video" : "image", thumbnailLink: f.thumbnailLink }));
+}
+
+// List the audio files in a folder (for the Audio library / audiograms).
+export async function listAudio(accessToken: string, folderId: string): Promise<DriveMedia[]> {
+  const q = `'${folderId.replace(/'/g, "\\'")}' in parents and trashed=false and mimeType contains 'audio/'`;
+  const url = `/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=200&orderBy=modifiedTime desc`;
+  const r = await driveGet(accessToken, url);
+  if (!r.ok) return [];
+  const j = (await r.json()) as { files?: any[] };
+  return (j.files || []).map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, kind: "audio" as const }));
 }
 
 // Stream a Drive file's bytes (image/video) — used to host the real media for preview + render.

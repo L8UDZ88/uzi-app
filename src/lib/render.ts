@@ -72,6 +72,84 @@ export function buildTimeline(o: TimelineOpts) {
   };
 }
 
+// Channel-native output size for a format.
+export function aspectSize(format: string): { width: number; height: number } {
+  const f = (format || "").toLowerCase();
+  if (f === "long" || f === "article") return { width: 1920, height: 1080 };            // 16:9
+  if (f === "feed" || f === "post" || f === "carousel") return { width: 1080, height: 1080 }; // 1:1
+  return { width: 1080, height: 1920 };                                                  // 9:16 vertical (reel/short/story/video)
+}
+
+type SpliceOpts = {
+  clipUrl: string;
+  start: number;        // in-point into the source (seconds)
+  length: number;       // clip duration (seconds)
+  width: number;
+  height: number;
+  musicUrl?: string;
+  musicLoopSeg?: number;
+  logoUrl?: string;
+  captions?: { text: string; start: number; length: number }[]; // burned captions, timed relative to the clip
+};
+
+// Trim a source video to [start, start+length] and output at the channel aspect. One clean cut,
+// played at 1x. Optional burned captions (timed to the trimmed clip) and a logo overlay.
+export function buildSpliceTimeline(o: SpliceOpts) {
+  const tracks: any[] = [];
+  if (o.captions && o.captions.length) {
+    tracks.push({
+      clips: o.captions.map((c) => ({
+        asset: { type: "title", text: c.text, style: "subtitle", size: "medium", position: "bottom" },
+        start: Math.max(0, c.start), length: Math.max(0.4, c.length),
+      })),
+    });
+  }
+  if (o.logoUrl) {
+    tracks.push({ clips: [{ asset: { type: "image", src: o.logoUrl }, start: 0, length: o.length, fit: "none", scale: 0.16, position: "topLeft", offset: { x: 0.05, y: -0.06 }, opacity: 0.9 }] });
+  }
+  tracks.push({ clips: [{ asset: { type: "video", src: o.clipUrl, trim: Math.max(0, o.start) }, start: 0, length: o.length, fit: "cover" }] });
+  if (o.musicUrl) {
+    const seg = o.musicLoopSeg && o.musicLoopSeg > 0 ? o.musicLoopSeg : 30;
+    const mclips: any[] = [];
+    for (let s = 0; s < o.length; s += seg) mclips.push({ asset: { type: "audio", src: o.musicUrl, volume: 0.12 }, start: s, length: Math.min(seg, o.length - s) });
+    tracks.push({ clips: mclips });
+  }
+  return { timeline: { background: "#000000", tracks }, output: { format: "mp4", size: { width: o.width, height: o.height } } };
+}
+
+type AudiogramOpts = {
+  audioUrl: string;
+  start: number;         // in-point into the source audio (seconds)
+  length: number;        // clip duration (seconds)
+  width: number;
+  height: number;
+  title?: string;        // brand/episode label shown at top
+  logoUrl?: string;
+  captions?: { text: string; start: number; length: number }[];
+  audioOnly?: boolean;   // true → output raw trimmed audio (mp3) for Podcast
+};
+
+// Turn an audio clip into an audiogram: a branded dark card with the brand logo/label and
+// timed captions over the trimmed audio. audioOnly → a raw trimmed MP3 for Podcast.
+export function buildAudiogramTimeline(o: AudiogramOpts) {
+  const trimmedAudio = { asset: { type: "audio", src: o.audioUrl, trim: Math.max(0, o.start) }, start: 0, length: o.length };
+  if (o.audioOnly) {
+    return { timeline: { background: "#000000", tracks: [{ clips: [trimmedAudio] }] }, output: { format: "mp3" } };
+  }
+  const tracks: any[] = [];
+  if (o.captions && o.captions.length) {
+    tracks.push({ clips: o.captions.map((c) => ({ asset: { type: "title", text: c.text, style: "subtitle", size: "medium", position: "center" }, start: Math.max(0, c.start), length: Math.max(0.4, c.length) })) });
+  }
+  if (o.title) {
+    tracks.push({ clips: [{ asset: { type: "title", text: o.title, style: "minimal", size: "small", position: "top" }, start: 0, length: o.length }] });
+  }
+  if (o.logoUrl) {
+    tracks.push({ clips: [{ asset: { type: "image", src: o.logoUrl }, start: 0, length: o.length, fit: "none", scale: 0.22, position: "top", offset: { x: 0, y: -0.12 }, opacity: 0.95 }] });
+  }
+  tracks.push({ clips: [trimmedAudio] });
+  return { timeline: { background: "#0B0B0C", tracks }, output: { format: "mp4", size: { width: o.width, height: o.height } } };
+}
+
 export async function shotstackRender(timeline: any): Promise<{ id?: string; error?: string }> {
   const key = process.env.SHOTSTACK_API_KEY;
   if (!key) return { error: "No Shotstack key." };

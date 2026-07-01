@@ -58,7 +58,20 @@ model Brand {
   schedule  ScheduleItem[]
   assets    Asset[]
   products  ProductImage[]
+  transcripts Transcript[]
   updatedAt DateTime @updatedAt
+}
+
+// Cached speech-to-text for a library asset (audio/video), so we transcribe each file once.
+model Transcript {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  fileId    String   // Google Drive file id
+  text      String   @db.Text
+  words     Json     @default("[]") // [{ text, start, end }] word-level timings
+  createdAt DateTime @default(now())
+  @@unique([brandId, fileId])
 }
 
 model ScheduleItem {

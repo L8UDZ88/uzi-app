@@ -7,6 +7,40 @@ import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 
 const STEPS = ["Offer", "Inputs", "Profile", "Story", "Pillars", "Cadence"];
 
+// A single typed content-library folder picker (Documents / Audio / Video). Connects its own
+// Drive folder via the `slot` param so each library is a distinct, visible source.
+function LibraryPicker({ campaignId, slot, label, hint, lib, onPicked }: { campaignId: string; slot: string; label: string; hint: string; lib: any; onPicked: (info: any) => void; }) {
+  const [q, setQ] = useState("");
+  const [folders, setFolders] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const search = async (v: string) => { setQ(v); try { const d = await (await fetch(`/api/google/folders?q=${encodeURIComponent(v)}`)).json(); setFolders(d.folders || []); } catch { setFolders([]); } };
+  const pick = async (f: any) => {
+    setBusy(true);
+    const d = await (await fetch(`/api/google/connect-folder`, { method: "POST", body: JSON.stringify({ campaignId, folderId: f.id, folderName: f.name, slot }) })).json();
+    setBusy(false);
+    if (d.ok) { onPicked({ folderId: f.id, folderName: f.name, fileCount: d.fileCount }); setOpen(false); setFolders([]); }
+  };
+  return (
+    <div className={`p-4 rounded-xl border ${lib?.folderId ? "border-lime-400/60 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
+      <div className="font-semibold text-sm">{label}</div>
+      <div className="text-[11px] text-zinc-500">{hint}</div>
+      {lib?.folderId && !open ? (
+        <div className="mt-2 text-xs text-zinc-200">✓ {lib.folderName} <span className="text-zinc-500">· {lib.fileCount ?? 0} files</span> <button onClick={() => { setOpen(true); search(""); }} className="ml-1 underline text-zinc-400">Change</button></div>
+      ) : (
+        <div className="mt-2">
+          <input value={q} onChange={(e) => search(e.target.value)} onFocus={() => folders.length === 0 && search("")} placeholder="Search folders…" className="w-full bg-zinc-800 rounded-lg px-3 py-1.5 text-xs mb-1.5" />
+          <div className="max-h-32 overflow-auto divide-y divide-zinc-800 rounded-lg border border-zinc-800">
+            {folders.map((f) => <button key={f.id} disabled={busy} onClick={() => pick(f)} className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800/60 disabled:opacity-50">📁 {f.name}</button>)}
+            {folders.length === 0 && <div className="px-3 py-1.5 text-[11px] text-zinc-500">Type to search folders.</div>}
+          </div>
+          {busy && <div className="text-[11px] text-accent mt-1">Connecting…</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Wizard({ campaignId }: { campaignId: string }) {
   const r = useRouter();
   const [step, setStep] = useState(0);
@@ -237,6 +271,19 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
             </label>
           </div>
+
+          {drive.connected && (
+            <div className="mt-6">
+              <div className="text-sm font-semibold text-zinc-200">Content libraries <span className="text-[11px] font-normal text-zinc-500">— a separate folder per type, so it's clear what each post pulls from. Uzi splices these into posts.</span></div>
+              <div className="grid sm:grid-cols-3 gap-3 mt-3">
+                {([["documents", "Documents", ".docx / PDF — copy, frameworks, scripts"], ["audio", "Audio", "Podcasts, VO, recordings"], ["video", "Video", "Talking-head, demos, b-roll"]] as const).map(([slot, label, hint]) => (
+                  <LibraryPicker key={slot} campaignId={campaignId} slot={slot} label={label} hint={hint}
+                    lib={cfg.inputs?.libraries?.[slot]}
+                    onPicked={(info) => u({ inputs: { ...cfg.inputs, libraries: { ...(cfg.inputs?.libraries || {}), [slot]: info } } })} />
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-5">
             <div className="text-sm font-semibold text-zinc-200">{isDigital ? "Product / app screenshot (transparent PNG)" : "Product images (transparent PNG)"}</div>

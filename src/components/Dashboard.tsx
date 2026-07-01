@@ -112,6 +112,15 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [driveMedia, setDriveMedia] = useState<any[]>([]);   // real photos/footage from the Drive folder
   const [mediaLoading, setMediaLoading] = useState(false);
   const [realClip, setRealClip] = useState<string | null>(null); // picked real footage (video) URL
+  // Splice-from-library state (Phase 2): pick a video from the Video library, transcribe, auto-pick a moment, trim.
+  const [spliceMedia, setSpliceMedia] = useState<any[]>([]);
+  const [spliceLoading, setSpliceLoading] = useState(false);
+  const [spliceOpen, setSpliceOpen] = useState(false);
+  const [spliceFile, setSpliceFile] = useState<any | null>(null);
+  const [splicePlan, setSplicePlan] = useState<any | null>(null); // {start,end,total,caption,why,source,transcript}
+  const [spliceBusy, setSpliceBusy] = useState("");
+  const [spliceCaps, setSpliceCaps] = useState(false);
+  const [spliceKind, setSpliceKind] = useState<"video" | "audio">("video");
   const [stockQ, setStockQ] = useState("");
   const [clips, setClips] = useState<any[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
@@ -195,6 +204,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
     setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0); setRealClip(null);
+    setSpliceOpen(false); setSpliceFile(null); setSplicePlan(null); setSpliceBusy(""); setSpliceCaps(false); setSpliceKind("video"); setSpliceMedia([]);
     if (pillarSource(s.pillar) === "real") loadMedia();
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city, beat: s.beat, loop: s.loop }) });
     const d = await res.json();
@@ -396,6 +406,58 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       } catch { alert("Couldn't load that photo — try another."); }
     }
   };
+  // The channel-native format id for the current post (drives clip length + aspect).
+  const channelFormatId = () => {
+    const a = aspectFor(open?.channel || "", open?.format || "");
+    return a === "wide" ? "long" : a === "feed" || a === "carousel" ? "feed" : "reel";
+  };
+  const openSplice = (kind: "video" | "audio") => {
+    if (spliceOpen && spliceKind === kind) { setSpliceOpen(false); return; }
+    setSpliceKind(kind); setSpliceOpen(true); setSpliceFile(null); setSplicePlan(null); setSpliceMedia([]);
+    loadSplice(kind);
+  };
+  const loadSplice = async (kind: "video" | "audio") => {
+    setSpliceLoading(true);
+    try {
+      const d = await (await fetch(`/api/google/media?campaignId=${campaignId}&slot=${kind}`)).json();
+      if (Array.isArray(d.media)) setSpliceMedia(d.media.filter((m: any) => m.kind === kind));
+      if (d.error && !(d.media || []).length) alert(d.error);
+    } catch { /* ignore */ } finally { setSpliceLoading(false); }
+  };
+  // Pick a library video → transcribe (cached) → auto-pick the best moment + aligned caption.
+  const pickSplice = async (m: any) => {
+    setSpliceFile(m); setSplicePlan(null); setSpliceBusy("Transcribing…");
+    try {
+      const t = await postJSON("/api/transcribe", { campaignId, fileId: m.id, fileName: m.name, mimeType: m.mimeType }, 120000);
+      if (t.error) { setSpliceBusy(""); alert(t.error); return; }
+      setSpliceBusy("Finding the best moment…");
+      const p = await postJSON("/api/splice/plan", { campaignId, fileId: m.id, format: channelFormatId(), pillar: open?.pillar, beat: open?.beat }, 60000);
+      if (p.error) { setSpliceBusy(""); alert(p.error); return; }
+      setSplicePlan({ ...p.plan, total: p.total, transcript: p.transcript });
+      if (p.plan?.caption) setDraft((d) => (d ? { ...d, caption: p.plan.caption } : d));
+      setSpliceBusy("");
+    } catch { setSpliceBusy(""); alert("Splice failed — try again."); }
+  };
+  // Render the trimmed clip (optional burned captions), then poll for the MP4.
+  const makeSplice = async () => {
+    if (!spliceFile || !splicePlan) return;
+    setVideoBusy(true); setVideoStatus(spliceKind === "audio" ? "Building your audiogram…" : "Cutting your clip…"); setVideoUrl(null);
+    try {
+      const len = Math.max(1, splicePlan.end - splicePlan.start);
+      const isPodcast = /podcast/i.test(open?.channel || "");
+      const d = spliceKind === "audio"
+        ? await postJSON("/api/splice/audiogram", { campaignId, fileId: spliceFile.id, start: splicePlan.start, length: len, format: channelFormatId(), captions: spliceCaps, podcast: isPodcast }, 60000)
+        : await postJSON("/api/splice/render", { campaignId, fileId: spliceFile.id, start: splicePlan.start, length: len, format: channelFormatId(), captions: spliceCaps, musicUrl: music || undefined }, 60000);
+      if (!d.renderId) { setVideoBusy(false); setVideoStatus(""); alert(d.error || "Couldn't start the clip."); return; }
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const s = await (await fetch(`/api/video/status?id=${d.renderId}`)).json();
+        if (s.url) { setVideoUrl(s.url); setVideoStatus(""); break; }
+        if (s.status === "failed") { setVideoStatus(""); alert("Render failed — try a shorter clip."); break; }
+        setVideoStatus(`Rendering… ${s.status || ""}`);
+      }
+    } catch { alert("Clip render failed."); } finally { setVideoBusy(false); }
+  };
   const loadItalian = async () => {
     if (itVoices.length || itLoading) return;
     setItLoading(true);
@@ -429,7 +491,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const approve = async () => {
     if (!open || !draft) return;
     const cap = [draft.caption, (draft.hashtags || []).join(" ")].filter(Boolean).join("\n\n");
-    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved", caption: cap, mediaUrl: image }) });
+    // Assembled post = the finished media (spliced clip / rendered video wins over a still) + aligned caption.
+    const media = videoUrl || image;
+    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved", caption: cap, mediaUrl: media }) });
     setSlots(slots.map((s) => (s.id === open.id ? { ...s, status: "approved" } : s)));
     setOpen(null);
   };
@@ -645,6 +709,47 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     <div className="text-xs text-zinc-500 mb-1">1 · Image prompt — edit to adjust the scene, then generate</div>
                     <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
                     <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
+                  </div>
+                )}
+
+                {/* Splice from the Video library — auto-pick a moment, adjust, trim to this channel */}
+                {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (
+                  <div className="border-t border-zinc-800 pt-3">
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => openSplice("video")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "video" ? "text-lime-300" : "text-zinc-400"}`}>✂️ Splice from video library</button>
+                      <button onClick={() => openSplice("audio")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "audio" ? "text-lime-300" : "text-zinc-400"}`}>🎧 Audiogram from audio library</button>
+                    </div>
+                    {spliceOpen && (
+                      <div className="mt-2 space-y-2">
+                        {spliceLoading && <div className="text-xs text-zinc-500">Loading your {spliceKind} library…</div>}
+                        {!spliceLoading && spliceMedia.length === 0 && <div className="text-xs text-zinc-500">No {spliceKind} files found. Connect a {spliceKind === "audio" ? "Audio" : "Video"} library folder in Edit setup → Inputs.</div>}
+                        {spliceMedia.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2 max-h-44 overflow-auto">
+                            {spliceMedia.map((m) => (
+                              <button key={m.id} onClick={() => pickSplice(m)} className={`relative block rounded-lg overflow-hidden border ${spliceFile?.id === m.id ? "border-lime-400" : "border-zinc-800"} bg-zinc-900`}>
+                                {m.thumbnailLink ? <img src={m.thumbnailLink} alt="" className="w-full h-16 object-cover" /> : <div className="w-full h-16 flex items-center justify-center text-zinc-600 text-[10px] px-1 text-center">{m.name}</div>}
+                                <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">{spliceKind === "audio" ? "🎧" : "▶"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {spliceBusy && <div className="text-xs text-accent">{spliceBusy}</div>}
+                        {splicePlan && (
+                          <div className="bg-zinc-800/40 rounded-lg p-3 space-y-2">
+                            <div className="text-[11px] text-zinc-400">{splicePlan.source === "ai" ? "AI-picked moment" : "Auto-picked moment"}{splicePlan.why ? ` — ${splicePlan.why}` : ""}</div>
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <label className="text-zinc-500">In</label>
+                              <input type="number" step="0.1" value={splicePlan.start} onChange={(e) => setSplicePlan({ ...splicePlan, start: Math.max(0, Number(e.target.value) || 0) })} className="w-20 bg-zinc-800 rounded px-2 py-1" />
+                              <label className="text-zinc-500">Out</label>
+                              <input type="number" step="0.1" value={splicePlan.end} onChange={(e) => setSplicePlan({ ...splicePlan, end: Number(e.target.value) || 0 })} className="w-20 bg-zinc-800 rounded px-2 py-1" />
+                              <span className="text-zinc-600">/ {Math.round(splicePlan.total || 0)}s · clip {Math.max(0, (splicePlan.end || 0) - (splicePlan.start || 0)).toFixed(1)}s</span>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={spliceCaps} onChange={(e) => setSpliceCaps(e.target.checked)} /> Burn in captions</label>
+                            <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Cutting…") : "Make clip ✂️"}</Btn>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
