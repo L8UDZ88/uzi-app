@@ -1,11 +1,12 @@
 // Video assembly + mastering via Shotstack (cloud renderer). Direct REST, no SDK.
 // Builds a timeline from a stock clip + voiceover + optional music, returns an MP4.
-// SHOTSTACK_ENV: "stage" (free sandbox, watermarked) or "v1" (production). Defaults to stage.
+// SHOTSTACK_ENV: "stage" (free sandbox, watermarked) or "v1" (production). Defaults to "v1"
+// (production) so no env var is required; set SHOTSTACK_ENV=stage to use the free sandbox.
 
 export function renderEnabled(): boolean {
   return !!process.env.SHOTSTACK_API_KEY;
 }
-const ENV = process.env.SHOTSTACK_ENV || "stage";
+const ENV = process.env.SHOTSTACK_ENV || "v1";
 const BASE = `https://api.shotstack.io/${ENV}`;
 
 type TimelineOpts = {

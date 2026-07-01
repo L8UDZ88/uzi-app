@@ -59,6 +59,21 @@ model Brand {
   assets    Asset[]
   products  ProductImage[]
   transcripts Transcript[]
+  trailers  TrailerJob[]
+  updatedAt DateTime @updatedAt
+}
+
+// The Brand Movie Trailer — a beat-by-beat cinematic film, generated asynchronously.
+model TrailerJob {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  status    String   @default("planned") // planned | generating | assembling | done | failed
+  step      Int      @default(0)          // which beat index is currently being generated
+  beats     Json     @default("[]")       // [{ id,name,phase,job,prompt,copy,imageUrl,videoUrl,endFrameUrl,status }]
+  trailerUrl String?                      // final assembled MP4
+  error     String?
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 

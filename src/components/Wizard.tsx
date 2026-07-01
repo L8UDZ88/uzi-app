@@ -51,6 +51,8 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const [folders, setFolders] = useState<any[]>([]);
   const [folderQ, setFolderQ] = useState("");
   const [driveBusy, setDriveBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
   const [products, setProducts] = useState<any[]>([]);
   const [prodBusy, setProdBusy] = useState(false);
   const [storyBusy, setStoryBusy] = useState(false);
@@ -108,6 +110,15 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
       u({ inputs: { ...cfg.inputs, drive: true, driveFolderName: f.name } });
       setFolders([]);
     }
+  };
+
+  const syncLibraries = async () => {
+    setSyncBusy(true); setSyncMsg("");
+    try {
+      const d = await (await fetch(`/api/ingest`, { method: "POST", body: JSON.stringify({ campaignId }) })).json();
+      if (d.ok) setSyncMsg(`✓ Brain updated from ${d.docs} document${d.docs === 1 ? "" : "s"}${d.transcripts ? ` + ${d.transcripts} transcript${d.transcripts === 1 ? "" : "s"}` : ""}.`);
+      else setSyncMsg(d.error || "Couldn't sync — try again.");
+    } catch { setSyncMsg("Couldn't sync — try again."); } finally { setSyncBusy(false); }
   };
 
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
@@ -282,6 +293,11 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                     onPicked={(info) => u({ inputs: { ...cfg.inputs, libraries: { ...(cfg.inputs?.libraries || {}), [slot]: info } } })} />
                 ))}
               </div>
+              <div className="flex items-center gap-3 mt-3">
+                <button onClick={syncLibraries} disabled={syncBusy} className="bg-accent text-zinc-950 font-semibold text-sm rounded-lg px-4 py-2 disabled:opacity-50">{syncBusy ? "Synthesizing…" : "Sync libraries into the brain ✨"}</button>
+                {syncMsg && <span className="text-xs text-zinc-400">{syncMsg}</span>}
+              </div>
+              <div className="text-[11px] text-zinc-600 mt-1">Reads your Documents (+ any transcribed clips) and distills them into one grounded brain that all copy is written from — no invented facts.</div>
             </div>
           )}
 

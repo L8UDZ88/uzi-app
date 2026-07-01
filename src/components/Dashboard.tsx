@@ -139,6 +139,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [products, setProducts] = useState<{ id: string; name: string; kind?: string }[]>([]);
   const [productSel, setProductSel] = useState<string | null>(null);
   const [sceneStyle, setSceneStyle] = useState<"hero" | "lifestyle">("hero");
+  const [trailer, setTrailer] = useState<any>(null);
+  const [trailerBusy, setTrailerBusy] = useState(false);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -149,6 +151,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     fetch(`/api/social/status?campaignId=${campaignId}`).then((x) => x.json()).then(setSocial).catch(() => {});
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("social")) setTab("deliver");
   }, [campaignId]);
+
+  useEffect(() => { if (tab === "trailer" && !trailer) loadTrailer(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch("/api/voiceover/voices").then((x) => x.json()).then((d) => {
@@ -458,6 +462,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       }
     } catch { alert("Clip render failed."); } finally { setVideoBusy(false); }
   };
+  const loadTrailer = async () => {
+    try { const d = await (await fetch(`/api/trailer/get?campaignId=${campaignId}`)).json(); if (d.job) setTrailer(d.job); } catch { /* ignore */ }
+  };
+  const planTrailer = async () => {
+    setTrailerBusy(true);
+    try {
+      const d = await postJSON("/api/trailer/plan", { campaignId }, 90000);
+      if (d.job) setTrailer(d.job); else alert(d.error || "Couldn't storyboard — try again.");
+    } catch { alert("Couldn't storyboard — try again."); } finally { setTrailerBusy(false); }
+  };
   const loadItalian = async () => {
     if (itVoices.length || itLoading) return;
     setItLoading(true);
@@ -532,7 +546,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
-          {["calendar", "pillars", "deliver"].map((t) => (
+          {["calendar", "pillars", "trailer", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
@@ -580,6 +594,39 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <div className="grid sm:grid-cols-2 gap-3">{pillars.map((p) => (
             <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{campaign.pillars?.[p.id]?.freq || "weekly"}</div></Card>
           ))}</div>
+        )}
+        {tab === "trailer" && (
+          <div>
+            <Card className="p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-lg font-bold">🎬 Brand Movie Trailer</div>
+                  <div className="text-zinc-400 text-sm">A cinematic trailer built beat-by-beat along your story arc. Start with the storyboard, then generate the film.</div>
+                </div>
+                <Btn disabled={trailerBusy} onClick={planTrailer}>{trailerBusy ? "Storyboarding…" : (trailer?.beats?.length ? "Re-storyboard" : "Storyboard my trailer 🎬")}</Btn>
+              </div>
+            </Card>
+            {trailer?.beats?.length > 0 && (
+              <div className="space-y-2 mt-3">
+                {trailer.beats.map((b: any, i: number) => (
+                  <Card key={b.id + i} className="p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-zinc-500">Beat {i + 1}</span>
+                      <span className="font-semibold text-sm">{b.name}</span>
+                      <span className={`text-[10px] rounded-full px-2 py-0.5 ${phaseStyle(b.phase)}`}>{b.phase}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-1">Job: {b.job}</div>
+                    {b.copy && <div className="text-sm text-zinc-200 mt-2">“{b.copy}”</div>}
+                    <div className="text-xs text-zinc-400 mt-1"><span className="text-zinc-600">Shot:</span> {b.prompt}</div>
+                  </Card>
+                ))}
+                <Card className="p-4 border-dashed">
+                  <div className="text-sm text-zinc-300 font-semibold">Next: generate the film</div>
+                  <div className="text-xs text-zinc-500 mt-1">Beat-by-beat image → animated shots with end-frame continuity → voiceover, score, transitions, fades, logo motion → master + export (full trailer + per-beat clips). This runs as a background job — coming in the next build.</div>
+                </Card>
+              </div>
+            )}
+          </div>
         )}
         {tab === "deliver" && (
           <div className="space-y-4">
