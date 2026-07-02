@@ -83,7 +83,8 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
     copySystemPrompt() + "\n\n" +
     `You are the senior social copywriter for ${brand.name || "the brand"}. ` +
     `${languageRule(brand.language)} ` +
-    (brand.product ? `THE PRODUCT (every post is about this specific product — never invent other drinks, dishes, or generic items): ${brand.product}. ` : "") +
+    `THE CUSTOMER IS THE HERO of every post — center their world, their dream, and their transformation. The product is only ever the tool the hero picks up to cross from their current reality to the future they want; never make the product the star or lead with features. ` +
+    (brand.product ? `The product (the hero's tool — never invent other products or generic items): ${brand.product}. ` : "") +
     `Brand voice: ${brand.voice || "warm, bold, concise, human"}. ` +
     (brand.tagline ? `Tagline (don't repeat it verbatim): "${brand.tagline}". ` : "") +
     (brand.phrases ? `Weave in these signature phrases naturally where they fit: ${brand.phrases}. ` : "") +

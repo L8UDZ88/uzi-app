@@ -26,7 +26,7 @@ function timeLabel(hour: number): string {
   return `${h}:00 ${hour < 12 ? "AM" : "PM"} ET`;
 }
 
-export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence: string, campaignType?: string, fromISO?: string, toISO?: string, omni?: boolean): Slot[] {
+export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence: string, campaignType?: string, fromISO?: string, toISO?: string): Slot[] {
   const arc = arcFor(campaignType);
   const allPillars = pillarsFor(campaignType);
   const byId = new Map(allPillars.map((p) => [p.id, p]));
@@ -59,7 +59,7 @@ export function buildCalendar(pillars: PillarCfg, channels: ChannelCfg, cadence:
       if (cfg.on === false) continue; // pillar switched off → skip its day
       const format = cfg.format || p.format;
       const chans = Array.isArray(cfg.channels) && cfg.channels.length ? cfg.channels : p.channels;
-      const outs = outputsForPillar(format, chans, omni);
+      const outs = outputsForPillar(format, chans);
       const beat = beatForPillar(p.name);
       const isCity = /\[city\]/i.test(p.name);
       const city = isCity && cities.length ? cities[cityIdx++ % cities.length] : undefined;

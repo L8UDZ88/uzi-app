@@ -34,15 +34,18 @@ export const PILLARS_PHYSICAL: Pillar[] = [
   { id: 8, name: "AI Showcase", desc: "One striking AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["instagram", "facebook", "x"], source: "ai" },
 ];
 
+// Customer-as-Hero pillar system (Hero Frame). Every pillar is a stage in the CUSTOMER's
+// transformation — the product only ever appears as the tool the hero picks up, never the star.
+// Copy for each pillar is drawn from the brand's Hero Frame inputs set in the Story step.
 export const PILLARS_DIGITAL: Pillar[] = [
-  { id: 1, name: "Product in Action", desc: "Show the product actually working — UI, demo, before/after", src: "Screen capture / demo", media: "video", format: "reel", formats: ["reel", "longvideo", "photo"], channels: ["youtube", "instagram", "tiktok"] },
-  { id: 2, name: "Problem → Outcome", desc: "Name the pain, show the after-state the product delivers", src: "Concept / UI", media: "image", format: "photo", formats: ["photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
-  { id: 3, name: "Now Shipping", desc: "Launches: new feature, integration, platform, release notes", src: "Release visual", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram", "facebook"] },
-  { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", format: "graphic", formats: ["graphic", "photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
-  { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / POV", media: "video", format: "text", formats: ["text", "reel", "longvideo", "graphic"], channels: ["linkedin", "x"] },
-  { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram"] },
-  { id: 7, name: "Brand Vision", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", formats: ["longvideo", "reel"], channels: ["youtube"] },
-  { id: 8, name: "Product Showcase", desc: "One clean AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["linkedin", "x", "instagram"], source: "ai" },
+  { id: 1, name: "The Hero's World", desc: "Mirror the customer's current reality so they feel seen — their day, their identity, their world (Hero)", src: "Concept / relatable scene", media: "image", format: "photo", formats: ["photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
+  { id: 2, name: "The Dream", desc: "Paint the future they want as vividly theirs — the after-state, made personal (Dream Outcome)", src: "Aspirational scene", media: "image", format: "photo", formats: ["photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
+  { id: 3, name: "The Obstacle", desc: "Name the enemy / old way keeping them stuck, and what staying costs them (Obstacle + Enemy + Cost)", src: "Concept / POV", media: "image", format: "text", formats: ["text", "photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
+  { id: 4, name: "The Turning Point", desc: "The one insight that changes everything — the reframe that opens the path (Core Mechanism)", src: "Talking head / POV", media: "video", format: "text", formats: ["text", "reel", "longvideo", "graphic"], channels: ["linkedin", "x"] },
+  { id: 5, name: "Proof of Crossing", desc: "Heroes like them who made it — wins, metrics, testimonials with the CUSTOMER as protagonist (Scoreboard)", src: "Testimonial / data", media: "image", format: "graphic", formats: ["graphic", "photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
+  { id: 6, name: "The System", desc: "How the machine makes their transformation inevitable — inputs → output, cause → effect (System + Causality)", src: "Demo / diagram", media: "video", format: "reel", formats: ["reel", "longvideo", "graphic", "photo"], channels: ["youtube", "linkedin", "instagram", "tiktok"] },
+  { id: 7, name: "The Call", desc: "The concrete next step the hero takes now — the specific choice, friction removed (Call to Adventure)", src: "CTA graphic", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram"] },
+  { id: 8, name: "The New World", desc: "The mission and the world on the other side of the crossing — the hero brand film (Vision + Multiplied Outcome)", src: "Brand film", media: "video", format: "longvideo", formats: ["longvideo", "reel"], channels: ["youtube"] },
 ];
 
 export const CAMPAIGN_TYPES = [
@@ -130,12 +133,11 @@ export function channelSupportsFormat(channelId: string, content: ContentFormat)
 // Fan a pillar out across its channels — one post per channel, each in the channel's native
 // version of the pillar's content format. So Ambient Film = Reels/Shorts, Locator = Carousels,
 // Spotted at = Feed photos, Transaction = Stories — distinct, channel-appropriate, every time.
-export function outputsForPillar(content: ContentFormat, channels?: string[], omni?: boolean): Output[] {
-  // OMNI MODE: fan to EVERY channel, tailoring the format to each channel's native version of the
-  // content (channelFormatFor always adapts). NORMAL: only the channels this format natively carries.
+export function outputsForPillar(content: ContentFormat, channels?: string[]): Output[] {
+  // Fan to the channels this pillar targets, keeping only those that natively carry the format.
   const allowed = channelsForFormat(content);
-  const base = omni ? CHANNELS.map((c) => c.id) : (channels && channels.length ? channels : CHANNELS.map((c) => c.id));
-  const chans = omni ? base : base.filter((cid) => allowed.includes(cid));
+  const base = channels && channels.length ? channels : CHANNELS.map((c) => c.id);
+  const chans = base.filter((cid) => allowed.includes(cid));
   const out: Output[] = [];
   for (const cid of chans) {
     const ch = CHANNELS.find((c) => c.id === cid);

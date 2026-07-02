@@ -86,7 +86,6 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
           pillars: c.pillars || {}, channels: c.channels || {},
           inputs: { ...inp, brandKit, ...(story ? { story } : {}) },
           cadence: c.cadence || "steady",
-          omni: c.omni ?? false,
         });
       }
       setLoaded(true);
@@ -487,16 +486,9 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
             </div>
           </div>
 
-          {/* OMNI MODE — one master switch: every pillar → all channels, format auto-tailored per channel. */}
-          <div className="mt-5 flex flex-col items-center text-center gap-2 rounded-2xl border border-lime-400/40 bg-lime-400/5 p-4">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold tracking-tight">⚡ Omni mode</span>
-              <button onClick={() => u({ omni: !cfg.omni })} className={`w-11 h-6 rounded-full relative shrink-0 ${cfg.omni ? "bg-accent" : "bg-zinc-700"}`}>
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${cfg.omni ? "left-[22px]" : "left-0.5"}`} />
-              </button>
-              <span className={`text-xs font-medium ${cfg.omni ? "text-lime-300" : "text-zinc-500"}`}>{cfg.omni ? "ON" : "OFF"}</span>
-            </div>
-            <p className="text-xs text-zinc-400 max-w-md">Every pillar posts to <b>all channels</b>, with the format auto-tailored per channel — one source asset atomized into a native post everywhere. Pulls from your connected library first, AI as fallback. Turn off to fine-tune each pillar by hand.</p>
+          <div className="mt-5 rounded-2xl border border-lime-400/30 bg-lime-400/5 p-4 text-center">
+            <div className="text-sm font-bold tracking-tight">Customer-as-Hero pillar system</div>
+            <p className="text-xs text-zinc-400 max-w-lg mx-auto mt-1">Each pillar is a stage in your customer's transformation — drawn from your Hero Frame in the Story step. The product only ever appears as the tool the hero picks up. Tune the format and channels per pillar below.</p>
           </div>
 
           <div className="space-y-2 mt-5">
@@ -526,16 +518,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
                     <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
                     <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
                   </div>
-                  {on && cfg.omni && (
-                    <div className="px-3 pb-3">
-                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-zinc-400">
-                        <span className="rounded-full bg-lime-400/15 text-lime-300 px-2 py-0.5 font-medium">Omni</span>
-                        <span>All channels · format auto-tailored per channel · from your library (AI fallback)</span>
-                        <span className="ml-auto text-zinc-500 shrink-0">→ {CHANNELS.length} posts</span>
-                      </div>
-                    </div>
-                  )}
-                  {on && !cfg.omni && (
+                  {on && (
                     <div className="px-3 pb-3 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>

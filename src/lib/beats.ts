@@ -26,18 +26,18 @@ export const ARC_PHYSICAL: Beat[] = [
 
 // DIGITAL — 12 beats, 3 per S.
 export const ARC_DIGITAL: Beat[] = [
-  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "Brand Vision" },
-  { id: "tension", name: "The Tension", phase: "Start", job: "Name the pain / the broken old way in their world.", keys: ["obstacle", "enemy"], pillar: "Problem → Outcome" },
-  { id: "cost", name: "The Cost", phase: "Start", job: "What staying stuck actually costs them, in specifics.", keys: ["cost"], pillar: "Problem → Outcome", alts: ["Proof & Results"] },
-  { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The contrarian insight / the one thing that changes everything.", keys: ["mechanism"], pillar: "Deal Desk (Authority/POV)" },
-  { id: "optimality", name: "Picture Optimality", phase: "Struggle", job: "What the after-state looks like when success is inevitable.", keys: ["conditions", "dream"], pillar: "Brand Vision", alts: ["Product Showcase"] },
-  { id: "required", name: "What's Required", phase: "Struggle", job: "The structures/inputs that make the outcome predictable.", keys: ["conditions", "inputs"], pillar: "Now Shipping", alts: ["Start Here"] },
-  { id: "causality", name: "The Causality", phase: "Success", job: "The cause→effect formula that drives the outcome.", keys: ["causality"], pillar: "Deal Desk (Authority/POV)", alts: ["Problem → Outcome"] },
-  { id: "system", name: "System not Luck", phase: "Success", job: "Show it actually working — deploy the machine, not motivation.", keys: ["system"], pillar: "Product in Action" },
-  { id: "multiplier", name: "The Multiplier", phase: "Success", job: "Customer wins and metrics — the system multiplies.", keys: ["multiplier", "scoreboard"], pillar: "Proof & Results" },
-  { id: "leverage", name: "The Leverage", phase: "Service", job: "Inputs → output → transformation; the leverage made tangible.", keys: ["inputs", "multiplier"], pillar: "Product in Action", alts: ["Proof & Results"] },
-  { id: "scoreboard", name: "The Scoreboard", phase: "Service", job: "The game/metrics they can measure and win, repeatedly.", keys: ["scoreboard"], pillar: "Proof & Results", alts: ["Start Here"] },
-  { id: "call", name: "The Call", phase: "Service", job: "How to begin — the specific choice, friction removed.", keys: ["call"], pillar: "Start Here" },
+  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "The Hero's World" },
+  { id: "tension", name: "The Tension", phase: "Start", job: "Name the pain / the broken old way in their world.", keys: ["obstacle", "enemy"], pillar: "The Obstacle" },
+  { id: "cost", name: "The Cost", phase: "Start", job: "What staying stuck actually costs them, in specifics.", keys: ["cost"], pillar: "The Obstacle", alts: ["Proof of Crossing"] },
+  { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The contrarian insight / the one thing that changes everything.", keys: ["mechanism"], pillar: "The Turning Point" },
+  { id: "optimality", name: "Picture Optimality", phase: "Struggle", job: "What the after-state looks like when success is inevitable.", keys: ["conditions", "dream"], pillar: "The Dream", alts: ["The New World"] },
+  { id: "required", name: "What's Required", phase: "Struggle", job: "The structures/inputs that make the outcome predictable.", keys: ["conditions", "inputs"], pillar: "The System", alts: ["The Call"] },
+  { id: "causality", name: "The Causality", phase: "Success", job: "The cause→effect formula that drives the outcome.", keys: ["causality"], pillar: "The System", alts: ["The Turning Point"] },
+  { id: "system", name: "System not Luck", phase: "Success", job: "Show it actually working — deploy the machine, not motivation.", keys: ["system"], pillar: "The System" },
+  { id: "multiplier", name: "The Multiplier", phase: "Success", job: "Customer wins and metrics — the system multiplies.", keys: ["multiplier", "scoreboard"], pillar: "Proof of Crossing" },
+  { id: "leverage", name: "The Leverage", phase: "Service", job: "Inputs → output → transformation; the leverage made tangible.", keys: ["inputs", "multiplier"], pillar: "The System", alts: ["Proof of Crossing"] },
+  { id: "scoreboard", name: "The Scoreboard", phase: "Service", job: "The game/metrics they can measure and win, repeatedly.", keys: ["scoreboard"], pillar: "Proof of Crossing", alts: ["The Call"] },
+  { id: "call", name: "The Call", phase: "Service", job: "How to begin — the specific choice, friction removed.", keys: ["call"], pillar: "The Call" },
 ];
 
 export function arcFor(campaignType?: string): Beat[] {

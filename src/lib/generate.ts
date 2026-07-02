@@ -63,48 +63,54 @@ function pillarCopy(pillar: string, b: Brand): Copy {
       brief: "Corona-style ambient film: environment first, product as portal, golden hour, the signature ritual, real-product reveal, end-frame logo + tagline.",
       cta: "Find your moment →", tags: [slug(brand), "findyour" + slug(region), "ambient"],
     },
-    // ---- Digital campaign pillars ----
-    "Product in Action": {
-      headline: `See ${brand} do the work`,
-      caption: `Here's ${brand} actually working. ${tag} Watch it handle the thing you'd rather not.`,
-      brief: "Screen recording / UI walkthrough: show the product solving the core job in 1–2 steps.",
-      cta: "Try it yourself →", tags: [slug(brand), "producttour", "demo", "saas"],
+    // ---- Digital campaign pillars — Customer-as-Hero (Hero Frame) ----
+    "The Hero's World": {
+      headline: "You, right now",
+      caption: `If your day looks like this, you're not alone. ${tag} We see exactly where you are — and where this goes next.`,
+      brief: "Relatable scene of the customer's current reality (their desk, their day, their world). The hero, not the product.",
+      cta: "Sound familiar? →", tags: [slug(brand), "founderlife", "therealstory"],
     },
-    "Problem → Outcome": {
-      headline: "Before vs after",
-      caption: `The painful way vs the ${brand} way. ${tag} Skip the busywork, keep the result.`,
-      brief: "Two-state visual: the messy 'before' → the clean 'after' the product delivers.",
-      cta: "Get the after →", tags: [slug(brand), "beforeandafter", "workflow"],
+    "The Dream": {
+      headline: "Picture the after",
+      caption: `Imagine the version of this where it just works. ${tag} That future isn't luck — it's a decision away.`,
+      brief: "Aspirational scene of the customer's dream outcome — them, thriving, in the future state.",
+      cta: "That could be you →", tags: [slug(brand), "thedream", "whatspossible"],
     },
-    "Now Shipping": {
-      headline: `New in ${brand}`,
-      caption: `Just shipped: a new way to ${tag || "move faster"}. Live now in ${brand}.`,
-      brief: "Release visual: feature name + one-line benefit, clean UI snippet.",
-      cta: "See what's new →", tags: [slug(brand), "shipping", "changelog", "newfeature"],
+    "The Obstacle": {
+      headline: "What's really in the way",
+      caption: `It's not you — it's the old way. ${tag} Here's what it's quietly costing you every week you stay in it.`,
+      brief: "Name the enemy / old way and the cost of staying stuck. Push against it; the customer is the one held back.",
+      cta: "Name your obstacle →", tags: [slug(brand), "theoldway", "costofstuck"],
     },
-    "Proof & Results": {
-      headline: "Receipts",
-      caption: `Real results from real teams using ${brand}. The numbers do the talking.`,
-      brief: "Testimonial card or metric graphic: a customer quote or a hard outcome.",
-      cta: "See the results →", tags: [slug(brand), "casestudy", "results", "proof"],
+    "The Turning Point": {
+      headline: "The one thing that changes everything",
+      caption: `Most ${region || "people"} miss this. ${tag} The shift that turns the whole game — once you see it, you can't unsee it.`,
+      brief: "Talking-head or POV: the single insight / mechanism that unlocks the hero's path.",
+      cta: "See the shift →", tags: [slug(brand), "theinsight", "turningpoint"],
     },
-    "Deal Desk (Authority/POV)": {
-      headline: "Hot take",
-      caption: `Most ${region || "teams"} get this wrong. Here's the framework that fixes it.`,
-      brief: "Talking-head or carousel: a contrarian POV or named framework, founder/expert voice.",
-      cta: "Read the framework →", tags: [slug(brand), "framework", "pov", "founder"],
+    "Proof of Crossing": {
+      headline: "People like you, on the other side",
+      caption: `Real people who made the crossing. ${tag} The results are theirs — you're next.`,
+      brief: "Testimonial/metric with the CUSTOMER as protagonist — their win, their number, their story.",
+      cta: "See who made it →", tags: [slug(brand), "proof", "results", "customerwins"],
     },
-    "Start Here": {
-      headline: `Start with ${brand}`,
-      caption: `Two minutes to your first win. Free to start — ${tag || "no card required"}.`,
-      brief: "CTA graphic: a clear 'start free / book a demo' with the one-step promise.",
-      cta: "Start free →", tags: [slug(brand), "starthere", "freetrial", "getstarted"],
+    "The System": {
+      headline: "How it becomes inevitable",
+      caption: `This isn't motivation — it's a machine. ${tag} Feed it the right inputs, get the outcome, on repeat.`,
+      brief: "Show the system working: inputs → output, cause → effect. The machine that makes the hero's win predictable.",
+      cta: "See how it works →", tags: [slug(brand), "thesystem", "howitworks"],
     },
-    "Brand Vision": {
-      headline: "Why we built this",
-      caption: `The future we're building with ${brand}. ${tag}`,
-      brief: "Brand/vision film: the mission, the change you're making, hero product moments.",
-      cta: "Join us →", tags: [slug(brand), "vision", "mission", "buildinpublic"],
+    "The Call": {
+      headline: "Your move",
+      caption: `You can stay where you are, or take the first step. ${tag || "Two minutes to begin."} The choice is yours.`,
+      brief: "CTA: the one concrete next step the hero takes now — friction removed.",
+      cta: "Take the first step →", tags: [slug(brand), "yourmove", "startnow"],
+    },
+    "The New World": {
+      headline: "The world we're building",
+      caption: `This is bigger than one win. ${tag} Here's the world on the other side — and who it's for.`,
+      brief: "Brand/vision film: the mission and the world the hero steps into. The transformation, not the product.",
+      cta: "Step into it →", tags: [slug(brand), "thenewworld", "mission", "vision"],
     },
   };
   return map[pillar] || {
