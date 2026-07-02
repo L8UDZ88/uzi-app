@@ -7,6 +7,7 @@ import Wizard from "./Wizard";
 import { pillarsFor, aspectFor } from "@/lib/constants";
 import { arcFor } from "@/lib/beats";
 import { isGrowFastBrand } from "@/lib/presets";
+import { routePost, routeReady } from "@/lib/route";
 
 // Hard-cap the spoken voiceover script to ~20 seconds (≈230 chars), trimmed at a clean sentence
 // boundary. Ambient Film is exempt (it's meant to run long). This bounds the video length no
@@ -185,6 +186,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [trailerBusy, setTrailerBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoMsg, setAutoMsg] = useState("");
+  const [approveBusy, setApproveBusy] = useState(false);
   const [preview, setPreview] = useState<Slot | null>(null); // Deliver: enlarged final-review preview
   const isVideoUrl = (u?: string | null) => !!u && !u.startsWith("data:image") && /(mp4|\.mov|shotstack|\/render)/i.test(u);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
@@ -550,8 +552,28 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       }
     } catch { alert("Autopilot hit a snag — try again."); } finally { setAutoBusy(false); }
   };
+  // Autopilot review-by-exception: approve every drafted post at once.
+  const approveAll = async () => {
+    setApproveBusy(true);
+    try {
+      const d = await postJSON("/api/schedule/approve-all", { campaignId }, 60000);
+      if (d.ok) { const r2 = await (await fetch(`/api/campaigns/${campaignId}/schedule`)).json(); if (Array.isArray(r2.slots)) setSlots(r2.slots); }
+      else alert(d.error || "Couldn't approve — try again.");
+    } catch { alert("Couldn't approve — try again."); } finally { setApproveBusy(false); }
+  };
   const loadTrailer = async () => {
     try { const d = await (await fetch(`/api/trailer/get?campaignId=${campaignId}`)).json(); if (d.job) setTrailer(d.job); } catch { /* ignore */ }
+  };
+  const saveTrailer = async (jobId: string, beats: any[]) => {
+    try { await fetch(`/api/trailer/save`, { method: "POST", body: JSON.stringify({ jobId, beats }) }); } catch { /* ignore */ }
+  };
+  const updateBeat = (i: number, patch: any) => setTrailer((t: any) => (t ? { ...t, beats: t.beats.map((b: any, idx: number) => (idx === i ? { ...b, ...patch } : b)) } : t));
+  const persistTrailer = () => setTrailer((t: any) => { if (t) saveTrailer(t.id, t.beats); return t; });
+  const clearTrailer = () => {
+    if (!trailer?.beats?.length || !confirm("Clear all storyboard words (narration + shot prompts)?")) return;
+    const beats = trailer.beats.map((b: any) => ({ ...b, copy: "", prompt: "" }));
+    setTrailer({ ...trailer, beats });
+    saveTrailer(trailer.id, beats);
   };
   const planTrailer = async () => {
     setTrailerBusy(true);
@@ -657,6 +679,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 <div className="flex items-center gap-2">
                   {autoMsg && <span className="text-xs text-accent">{autoMsg}</span>}
                   <Btn className="text-xs px-3 py-1.5" disabled={autoBusy} onClick={runAutopilot}>{autoBusy ? "Drafting…" : "⚡ Generate all copy"}</Btn>
+                  {slots.some((s) => s.status === "drafted") && (
+                    <Btn className="text-xs px-3 py-1.5" disabled={approveBusy} onClick={approveAll}>{approveBusy ? "Approving…" : `✓ Approve all (${slots.filter((s) => s.status === "drafted").length})`}</Btn>
+                  )}
                   <Btn kind="ghost" className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
                 </div>
               </div>
@@ -723,7 +748,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <div className="text-lg font-bold">🎬 Brand Movie Trailer</div>
                   <div className="text-zinc-400 text-sm">A cinematic trailer built beat-by-beat along your story arc. Start with the storyboard, then generate the film.</div>
                 </div>
-                <Btn disabled={trailerBusy} onClick={planTrailer}>{trailerBusy ? "Storyboarding…" : (trailer?.beats?.length ? "Re-storyboard" : "Storyboard my trailer 🎬")}</Btn>
+                <div className="flex items-center gap-2">
+                  {trailer?.beats?.length > 0 && <Btn kind="ghost" disabled={trailerBusy} onClick={clearTrailer}>Clear</Btn>}
+                  <Btn disabled={trailerBusy} onClick={planTrailer}>{trailerBusy ? "Storyboarding…" : (trailer?.beats?.length ? "Re-storyboard" : "Storyboard my trailer 🎬")}</Btn>
+                </div>
               </div>
             </Card>
             {trailer?.beats?.length > 0 && (
@@ -736,8 +764,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                       <span className={`text-[10px] rounded-full px-2 py-0.5 ${phaseStyle(b.phase)}`}>{b.phase}</span>
                     </div>
                     <div className="text-[11px] text-zinc-500 mt-1">Job: {b.job}</div>
-                    {b.copy && <div className="text-sm text-zinc-200 mt-2">“{b.copy}”</div>}
-                    <div className="text-xs text-zinc-400 mt-1"><span className="text-zinc-600">Shot:</span> {b.prompt}</div>
+                    <label className="text-[10px] text-zinc-500 mt-2 block">Narration</label>
+                    <textarea value={b.copy || ""} onChange={(e) => updateBeat(i, { copy: e.target.value })} onBlur={persistTrailer} rows={2} placeholder="Narration line for this beat…" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 mt-0.5" />
+                    <label className="text-[10px] text-zinc-500 mt-2 block">Shot / cinematography prompt</label>
+                    <textarea value={b.prompt || ""} onChange={(e) => updateBeat(i, { prompt: e.target.value })} onBlur={persistTrailer} rows={2} placeholder="Camera, lens, lighting, motion, subject…" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-300 mt-0.5" />
                   </Card>
                 ))}
                 <Card className="p-4 border-dashed">
@@ -874,6 +904,19 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     </div>
                   </div>
                 )}
+                {/* Autopilot source routing — which source this post's media auto-comes from */}
+                {(() => {
+                  const r = routePost({ format: open.format, channel: open.channel, pillarSource: pillarSource(open.pillar) });
+                  const ready = routeReady(r, (campaign.inputs || {}).libraries);
+                  return (
+                    <div className={`text-[11px] rounded-lg px-3 py-2 flex items-center gap-2 ${ready ? "bg-zinc-800/50 text-zinc-400" : "bg-red-500/10 text-red-300 border border-red-500/40"}`}>
+                      <span>🎯 Auto-source:</span>
+                      <span className="text-zinc-200">{r.label}</span>
+                      {!ready && <span className="ml-auto">Connect your {r.needs} library in Brain →</span>}
+                    </div>
+                  );
+                })()}
+
                 {/* 1 · Visual — hidden for audio-only posts (Spotify/Podcast use the audio library below) */}
                 {aspectFor(open.channel, open.format) !== "audio" && (isLongform(open) ? (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-3">
