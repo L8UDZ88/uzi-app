@@ -210,6 +210,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0); setRealClip(null);
     setSpliceOpen(false); setSpliceFile(null); setSplicePlan(null); setSpliceBusy(""); setSpliceCaps(false); setSpliceKind("video"); setSpliceMedia([]);
     if (pillarSource(s.pillar) === "real") loadMedia();
+    if (isLongform(s)) { setSpliceOpen(true); setSpliceKind("video"); loadSplice("video"); } // long-form uses your uploaded video
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city, beat: s.beat, loop: s.loop }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -389,6 +390,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const pc = (campaign.pillars || {})[p.id] || {};
     return pc.source ?? (p as any).source ?? "ai";
   };
+  // Long-form video is never AI — it comes from an uploaded webcam/screen-share clip in the library.
+  const isLongform = (s: any) => !!s && (/long/i.test(s.format || "") || aspectFor(s.channel || "", s.format || "") === "wide");
   const loadMedia = async () => {
     if (driveMedia.length || mediaLoading) return;
     setMediaLoading(true);
@@ -461,6 +464,25 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         setVideoStatus(`Rendering… ${s.status || ""}`);
       }
     } catch { alert("Clip render failed."); } finally { setVideoBusy(false); }
+  };
+  // Talking-avatar from an audio clip: render trimmed audio → lip-sync a presenter photo to it.
+  const makeAvatar = async () => {
+    const av = products.find((p) => p.kind === "avatar");
+    if (!av) { alert("Upload a presenter photo in Edit setup → Connect Your Brain to enable avatar videos."); return; }
+    if (!spliceFile || !splicePlan) return;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    setVideoBusy(true); setVideoStatus("Rendering trimmed audio…"); setVideoUrl(null);
+    try {
+      const len = Math.max(1, splicePlan.end - splicePlan.start);
+      const a = await postJSON("/api/splice/audiogram", { campaignId, fileId: spliceFile.id, start: splicePlan.start, length: len, format: channelFormatId(), podcast: true }, 60000);
+      if (!a.renderId) throw new Error(a.error || "Couldn't prepare the audio.");
+      let mp3 = "";
+      for (let i = 0; i < 40; i++) { await wait(3000); const s = await (await fetch(`/api/video/status?id=${a.renderId}`)).json(); if (s.url) { mp3 = s.url; break; } if (s.status === "failed") throw new Error("Audio render failed."); setVideoStatus(`Audio… ${s.status || ""}`); }
+      if (!mp3) throw new Error("Audio timed out — try a shorter clip.");
+      setVideoStatus("Generating avatar…");
+      const d = await postJSON("/api/splice/avatar", { campaignId, audioUrl: mp3, avatarImageId: av.id }, 120000);
+      if (d.videoUrl) { setVideoUrl(d.videoUrl); setVideoStatus(""); } else alert(d.error || "Avatar generation failed.");
+    } catch (e: any) { alert(String(e?.message || "Avatar failed.")); } finally { setVideoBusy(false); }
   };
   const loadTrailer = async () => {
     try { const d = await (await fetch(`/api/trailer/get?campaignId=${campaignId}`)).json(); if (d.job) setTrailer(d.job); } catch { /* ignore */ }
@@ -546,7 +568,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4">
-          {["calendar", "pillars", "trailer", "deliver"].map((t) => (
+          {["trailer", "calendar", "pillars", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
@@ -729,8 +751,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     </div>
                   </div>
                 )}
-                {/* 1 · Visual — real footage from your folder, or AI generation */}
-                {pillarSource(open.pillar) === "real" ? (
+                {/* 1 · Visual — long-form uses uploaded video; else real footage or AI generation */}
+                {isLongform(open) ? (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-3">
+                    <div className="text-sm font-semibold text-zinc-200">🎥 Long-form uses your uploaded video</div>
+                    <div className="text-xs text-zinc-500 mt-1">No AI generation — pick your webcam / screen-share clip from the Video library below and trim it. It exports as the YouTube long-form (and a Spotify audio track).</div>
+                  </div>
+                ) : pillarSource(open.pillar) === "real" ? (
                   <div>
                     <div className="text-xs text-zinc-500 mb-1">1 · Your photos & footage — pick one from your connected folder (no AI)</div>
                     {mediaLoading && <div className="text-xs text-zinc-500">Loading your media…</div>}
@@ -792,7 +819,14 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                               <span className="text-zinc-600">/ {Math.round(splicePlan.total || 0)}s · clip {Math.max(0, (splicePlan.end || 0) - (splicePlan.start || 0)).toFixed(1)}s</span>
                             </div>
                             <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={spliceCaps} onChange={(e) => setSpliceCaps(e.target.checked)} /> Burn in captions</label>
-                            <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Cutting…") : "Make clip ✂️"}</Btn>
+                            {spliceKind === "audio" ? (
+                              <div className="flex gap-2">
+                                <Btn kind="ghost" className="flex-1 text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Working…") : "Audiogram 🎧"}</Btn>
+                                <Btn kind="ghost" className="flex-1 text-sm" disabled={videoBusy} onClick={makeAvatar}>Avatar video 🧑</Btn>
+                              </div>
+                            ) : (
+                              <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Cutting…") : "Make clip ✂️"}</Btn>
+                            )}
                           </div>
                         )}
                       </div>

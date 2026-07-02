@@ -65,6 +65,7 @@ export const CHANNELS = [
   { id: "facebook", name: "Facebook", glyph: "f" },
   { id: "tiktok", name: "TikTok", glyph: "♪" },
   { id: "podcast", name: "Podcast", glyph: "🎙" },
+  { id: "spotify", name: "Spotify", glyph: "🎧" },
 ] as const;
 
 export type PillarCfg = Record<string, { on: boolean; freq: string }>;
@@ -81,6 +82,7 @@ export const CHANNEL_FORMATS: Record<string, Format[]> = {
   facebook: [{ id: "post", name: "Post", aspect: "text" }, { id: "story", name: "Story", aspect: "vertical" }, { id: "reel", name: "Reel", aspect: "vertical" }],
   tiktok: [{ id: "video", name: "Video", aspect: "vertical" }],
   podcast: [{ id: "episode", name: "Episode", aspect: "audio" }, { id: "clip", name: "Clip", aspect: "audio" }],
+  spotify: [{ id: "audio", name: "Audio", aspect: "audio" }],
 };
 
 export type Output = { channelId: string; channelName: string; glyph: string; formatId: string; formatName: string; aspect: Aspect };
@@ -150,7 +152,7 @@ export const FORMAT_CHANNELS: Record<ContentFormat, string[]> = {
   reel:      ["instagram", "facebook", "tiktok", "youtube"],
   story:     ["instagram", "facebook"],
   carousel:  ["instagram", "linkedin"],
-  longvideo: ["youtube"],
+  longvideo: ["youtube", "spotify"],
   text:      ["linkedin", "x", "facebook"],
 };
 export function channelsForFormat(content: ContentFormat): string[] {

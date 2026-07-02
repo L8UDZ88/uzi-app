@@ -54,6 +54,36 @@ function buildPrompt(brief: string, brand: Brand, style: SceneStyle): string {
   );
 }
 
+// Generate a premium scene and INFUSE the brand's logo/marks: pull the palette from the logo and
+// place the logo tastefully + small, matched to the scene lighting. For AI content on brands that
+// have no product PNG (e.g. digital brands) but do have logos/brand design.
+export async function infuseLogoScene(
+  brief: string, brand: Brand, aspect: string | undefined, logoUrls: string[]
+): Promise<{ image: string | null; error?: string }> {
+  if (!process.env.FAL_KEY) return { image: null, error: "No FAL_KEY." };
+  if (!logoUrls.length) return { image: null, error: "No logo." };
+  cfg();
+  const prompt =
+    `Ultra high-end, cinematic, futuristic premium tech scene${brand.name ? ` for ${brand.name}` : ""}. ` +
+    `Build the scene: ${brief || "an evocative brand moment"}. ` +
+    `Draw the color palette from the provided brand logo and carry those brand colors through the lighting and set. ` +
+    `Place the brand logo tastefully and SMALL (a corner, a screen, or a clean surface), matched to the scene's lighting and perspective — keep the logo undistorted and legible, do not enlarge or center it. ` +
+    (brand.region ? `Context: ${brand.region}. ` : "") +
+    `Dramatic volumetric lighting, shallow depth of field, refined modern grade. No other text or watermarks.` +
+    (brand.donts ? ` Avoid: ${brand.donts}.` : "");
+  try {
+    const r: any = await fal.subscribe(INTEGRATE_MODEL, {
+      input: { prompt, image_urls: logoUrls, num_images: 1, aspect_ratio: aspectRatio(aspect), output_format: "png", sync_mode: true },
+    });
+    const d = r?.data || r;
+    const url = d?.images?.[0]?.url;
+    if (url) return { image: url };
+    return { image: null, error: "Logo infusion returned no image." };
+  } catch (e: any) {
+    return { image: null, error: `logo-scene: ${msg(e)}` };
+  }
+}
+
 // images: data URLs (product first, optional logo). Returns a data-URI image (sync_mode).
 export async function integrateProduct(
   brief: string, brand: Brand, aspect: string | undefined, style: SceneStyle, imageUrls: string[]

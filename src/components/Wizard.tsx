@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
 import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForFormat, formatsForPillar } from "@/lib/constants";
 import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
+import { GROWFAST_HERO_FRAME, GROWFAST_PROFILE, isGrowFastBrand, BRAIN_LOCK_WARNING } from "@/lib/presets";
 
-const STEPS = ["Offer", "Inputs", "Profile", "Story", "Pillars", "Cadence"];
+const STEPS = ["Offer", "Brain", "Profile", "Story", "Pillars", "Cadence"];
 
 // A single typed content-library folder picker (Documents / Audio / Video). Connects its own
 // Drive folder via the `slot` param so each library is a distinct, visible source.
@@ -53,6 +54,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   const [driveBusy, setDriveBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [uploadBusy, setUploadBusy] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [prodBusy, setProdBusy] = useState(false);
   const [storyBusy, setStoryBusy] = useState(false);
@@ -60,12 +62,29 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   useEffect(() => {
     fetch(`/api/campaigns/${campaignId}`).then((x) => x.json()).then((d) => {
       const c = d.campaign;
-      if (c) setCfg({
-        campaignType: c.campaignType || "physical",
-        name: c.name, handle: c.handle, tagline: c.tagline, region: c.region, voice: c.voice,
-        pillars: c.pillars || {}, channels: c.channels || {}, inputs: c.inputs || {}, cadence: c.cadence || "steady",
-        omni: c.omni ?? false,
-      });
+      if (c) {
+        const gf = isGrowFastBrand(c.name);
+        const inp = c.inputs || {};
+        const bk = inp.brandKit || {};
+        // GrowFast is locked to its brain content: seed Profile + Hero Frame from the fixed preset
+        // wherever the field is still empty (fully editable after).
+        const hasStory = inp.story && Object.values(inp.story).some((v: any) => String(v || "").trim());
+        const story = !hasStory && gf ? { ...GROWFAST_HERO_FRAME } : inp.story;
+        const brandKit = gf
+          ? { ...bk, product: bk.product || GROWFAST_PROFILE.product, donts: bk.donts || GROWFAST_PROFILE.donts, phrases: bk.phrases || GROWFAST_PROFILE.phrases }
+          : bk;
+        setCfg({
+          campaignType: c.campaignType || "physical",
+          name: c.name, handle: c.handle,
+          tagline: c.tagline || (gf ? GROWFAST_PROFILE.tagline : ""),
+          region: c.region || (gf ? GROWFAST_PROFILE.region : ""),
+          voice: c.voice || (gf ? GROWFAST_PROFILE.voice : ""),
+          pillars: c.pillars || {}, channels: c.channels || {},
+          inputs: { ...inp, brandKit, ...(story ? { story } : {}) },
+          cadence: c.cadence || "steady",
+          omni: c.omni ?? false,
+        });
+      }
       setLoaded(true);
     });
     fetch(`/api/google/status?campaignId=${campaignId}`).then((x) => x.json()).then(setDrive).catch(() => {});
@@ -112,6 +131,22 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     }
   };
 
+  // Drag & drop → upload file contents and ingest their text into the brain (used alongside Drive).
+  const handleUpload = async (fileList: FileList | null) => {
+    const arr = Array.from(fileList || []);
+    if (!arr.length) return;
+    setUploadBusy(true);
+    try {
+      const files = await Promise.all(arr.map(async (f) => ({
+        name: f.name, mime: f.type,
+        dataUrl: await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); }),
+      })));
+      const d = await (await fetch(`/api/upload`, { method: "POST", body: JSON.stringify({ campaignId, files }) })).json();
+      if (d.ok) u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...arr.map((f) => f.name)] } });
+      else alert(d.error || "Couldn't read those files — try again.");
+    } catch { alert("Upload failed — try again."); } finally { setUploadBusy(false); }
+  };
+
   const syncLibraries = async () => {
     setSyncBusy(true); setSyncMsg("");
     try {
@@ -128,6 +163,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
   // the connected Drive folder ("master brain"); the user reviews/edits. Fill-only-blanks.
   const setStory = (patch: any) => u({ inputs: { ...cfg.inputs, story: { ...(cfg.inputs?.story || {}), ...patch } } });
   const genStory = async () => {
+    if (isGrowFastBrand(cfg.name) && typeof window !== "undefined" && !window.confirm(BRAIN_LOCK_WARNING)) return;
     setStoryBusy(true);
     const provided = cfg.inputs?.story || {};
     try {
@@ -143,6 +179,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
   // Draft the Brand profile from the connected Drive folder ("master brain"). Fill-only-blanks.
   const genProfile = async () => {
+    if (isGrowFastBrand(cfg.name) && typeof window !== "undefined" && !window.confirm(BRAIN_LOCK_WARNING)) return;
     setProfileBusy(true);
     try {
       const bk = cfg.inputs?.brandKit || {};
@@ -241,7 +278,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
 
       {step === 1 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Connect inputs</h3>
+          <h3 className="text-xl font-bold">Connect Your Brain</h3>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
           <div className="grid sm:grid-cols-2 gap-4 mt-5">
             <div className={`p-5 rounded-xl border ${drive.folderId ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
@@ -278,8 +315,9 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
             </div>
             <label className="text-left p-5 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/40 cursor-pointer">
               <div className="font-bold">Drag &amp; drop upload</div>
-              <div className="text-zinc-400 text-sm mt-1">{cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added" : "Drop docs, screenshots, logos, copy"}</div>
-              <input type="file" multiple className="hidden" onChange={(e) => u({ inputs: { ...cfg.inputs, uploads: [...(cfg.inputs?.uploads || []), ...Array.from(e.target.files || []).map((f) => f.name)] } })} />
+              <div className="text-zinc-400 text-sm mt-1">{uploadBusy ? "Reading & ingesting…" : cfg.inputs?.uploads?.length ? cfg.inputs.uploads.length + " files added — ingested into your brain" : "Drop docs (.docx/PDF/txt), copy, frameworks"}</div>
+              <div className="text-[11px] text-zinc-600 mt-1">Works alongside Google Drive — both feed the brain together.</div>
+              <input type="file" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
             </label>
           </div>
 
@@ -331,6 +369,23 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
               <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
                 {prodBusy ? "…" : "+"}
                 <input type="file" accept="image/png" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0], "logo")} />
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="text-sm font-semibold text-zinc-200">Presenter / avatar photo</div>
+            <div className="text-zinc-400 text-sm">A clear head-and-shoulders photo of your presenter. Uzi can turn any Audio-library clip into a talking-avatar video, lip-synced to the audio.</div>
+            <div className="flex flex-wrap gap-3 mt-3">
+              {products.filter((p) => p.kind === "avatar").map((p) => (
+                <div key={p.id} className="relative w-20 h-20 rounded-lg border border-zinc-700 overflow-hidden bg-zinc-900">
+                  <img src={`/api/product/${p.id}`} alt={p.name} className="w-full h-full object-cover" />
+                  <button onClick={() => delProduct(p.id)} className="absolute top-0.5 right-0.5 text-[10px] bg-black/70 text-white rounded px-1">✕</button>
+                </div>
+              ))}
+              <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
+                {prodBusy ? "…" : "+"}
+                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0], "avatar")} />
               </label>
             </div>
           </div>
@@ -440,16 +495,19 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-zinc-400 w-16 shrink-0">Source:</span>
-                        <span className="text-xs text-zinc-300">{source === "real" ? "Real footage — your connected Drive folder" : "AI generated"}</span>
+                        <span className="text-xs text-zinc-300">{format === "longvideo" ? "Your uploaded video — webcam / screen-share (no AI)" : source === "real" ? "Real footage — your connected Drive folder" : "AI generated"}</span>
                       </div>
                       <div className="flex items-start gap-2 flex-wrap">
                         <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
                         <div className="flex flex-wrap gap-1.5">
                           {CHANNELS.filter((c) => allowedChans.includes(c.id)).map((c) => {
                             const sel = selChans.includes(c.id);
+                            const spot = c.id === "spotify"; // audio track — shown in yellow
+                            const on = spot ? "border-yellow-400 bg-yellow-400 text-zinc-950 font-medium" : "border-lime-400 bg-lime-400 text-zinc-950 font-medium";
+                            const off = spot ? "border-yellow-400/50 text-yellow-300" : "border-zinc-700 text-zinc-300";
                             return (
-                              <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? "border-lime-400 bg-lime-400 text-zinc-950 font-medium" : "border-zinc-700 text-zinc-300"}`}>
-                                {sel ? "✓ " : ""}{c.name}
+                              <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? on : off}`}>
+                                {sel ? "✓ " : ""}{c.name}{spot ? " (audio)" : ""}
                               </button>
                             );
                           })}

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { generateImage, generateImageWithProduct, generateBackdrop, imageEnabled } from "@/lib/image";
-import { integrateProduct, integrateEnabled } from "@/lib/integrate";
+import { integrateProduct, infuseLogoScene, integrateEnabled } from "@/lib/integrate";
+import { generateFlux, fluxEnabled } from "@/lib/flux";
 
 export const maxDuration = 60;
 
@@ -14,8 +15,8 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!imageEnabled() && !integrateEnabled()) {
-    return NextResponse.json({ error: "Image generation isn't enabled yet — add OPENAI_API_KEY or FAL_KEY in Vercel." }, { status: 400 });
+  if (!imageEnabled() && !integrateEnabled() && !fluxEnabled()) {
+    return NextResponse.json({ error: "Image generation isn't enabled yet — add FAL_KEY (recommended) or OPENAI_API_KEY in Vercel." }, { status: 400 });
   }
   const { campaignId, brief, aspect, productId, style } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
@@ -57,7 +58,18 @@ export async function POST(req: Request) {
     }
   }
 
-  // No product → plain scene.
+  // No product → plain scene. If brand logos are attached, infuse them (colors + tasteful logo
+  // placement). Otherwise prefer high-quality Flux; fall back to gpt-image.
+  const brandLogos = await prisma.productImage.findMany({ where: { brandId: campaignId, kind: "logo" }, take: 2 });
+  if (brandLogos.length && integrateEnabled()) {
+    const logoUrls = brandLogos.map((l) => `data:image/png;base64,${l.data}`);
+    const r = await infuseLogoScene(brief || "", brand, aspect, logoUrls);
+    if (r.image) return NextResponse.json({ image: r.image, logo: true });
+  }
+  if (fluxEnabled()) {
+    const f = await generateFlux(brief || "", brand, aspect);
+    if (f.image) return NextResponse.json({ image: f.image, flux: true });
+  }
   const { image, error } = await generateImage(brief || "", brand, aspect);
   if (!image) return NextResponse.json({ error: error || "Couldn't generate an image — try again." }, { status: 502 });
   return NextResponse.json({ image });

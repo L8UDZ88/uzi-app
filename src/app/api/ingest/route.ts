@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
-import { refreshAccessToken, listFiles, fetchDriveFile } from "@/lib/google";
+import { refreshAccessToken, listFiles, fetchDriveFile, readDriveFileText } from "@/lib/google";
 import { extractText } from "@/lib/extract";
 import { synthesizeBrain } from "@/lib/synth";
 
@@ -28,11 +28,13 @@ export async function POST(req: Request) {
     const files = await listFiles(token, docsFolder);
     for (const f of files.slice(0, 25)) {
       if (docText.length > 24000) break;
-      const resp = await fetchDriveFile(token, f.id).catch(() => null);
-      if (!resp || !resp.ok) continue;
-      const bytes = await resp.arrayBuffer();
-      const t = await extractText(bytes, f.mimeType, f.name);
-      if (t) { docCount++; docText += `\n\n### ${f.name}\n${t.slice(0, 4000)}`; }
+      // Google Docs / text → export to text; .docx / PDF → download bytes and extract.
+      let t = await readDriveFileText(token, f).catch(() => "");
+      if (!t) {
+        const resp = await fetchDriveFile(token, f.id).catch(() => null);
+        if (resp && resp.ok) t = await extractText(await resp.arrayBuffer(), f.mimeType, f.name);
+      }
+      if (t && t.trim()) { docCount++; docText += `\n\n### ${f.name}\n${t.slice(0, 4000)}`; }
     }
   }
 
@@ -44,9 +46,10 @@ export async function POST(req: Request) {
     if (t.text) transText += `\n\n### transcript\n${t.text.slice(0, 2500)}`;
   }
 
-  const base = String(inputs.sourceText || inputs.libraryRaw || "");
-  const raw = [base, docText, transText].filter(Boolean).join("\n\n").slice(0, 40000);
-  if (!raw.trim()) return NextResponse.json({ error: "Nothing to ingest yet — connect a Documents/Audio/Video library and (for media) transcribe some clips first." }, { status: 400 });
+  const base = String(inputs.libraryRaw || inputs.sourceText || "");
+  const uploads = String(inputs.uploadText || ""); // drag & drop docs — used alongside Drive
+  const raw = [base, uploads, docText, transText].filter(Boolean).join("\n\n").slice(0, 40000);
+  if (!raw.trim()) return NextResponse.json({ error: "Nothing to ingest yet — connect Google Drive, drop some docs, or connect a Documents/Audio/Video library first." }, { status: 400 });
 
   const synthesized = await synthesizeBrain(raw, c.name || "");
 

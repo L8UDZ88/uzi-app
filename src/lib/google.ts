@@ -121,6 +121,9 @@ export async function fetchDriveFile(accessToken: string, fileId: string): Promi
 }
 
 // Pull readable text from a file (Google Docs export, plain text, markdown). Other types skipped.
+export async function readDriveFileText(accessToken: string, f: DriveFile): Promise<string> {
+  return readText(accessToken, f);
+}
 async function readText(accessToken: string, f: DriveFile): Promise<string> {
   try {
     if (f.mimeType === "application/vnd.google-apps.document") {
