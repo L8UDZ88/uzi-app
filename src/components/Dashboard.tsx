@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
+import Wizard from "./Wizard";
 import { pillarsFor, aspectFor } from "@/lib/constants";
 import { arcFor } from "@/lib/beats";
 
@@ -574,7 +575,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-300 font-semibold">{campaign.name || "Your campaign"}</span>
           <span className="text-xs bg-zinc-800 text-zinc-300 rounded-full px-2.5 py-1 capitalize">{campaign.campaignType}</span>
-          <Btn kind="ghost" onClick={() => r.push(`/campaign/${campaignId}/setup`)}>Edit setup</Btn>
+          <Btn kind="ghost" onClick={() => setTab("offer")}>Edit setup</Btn>
           <Btn kind="soft" onClick={logout}>Log out</Btn>
         </div>
       </nav>
@@ -585,11 +586,21 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{campaign.cadence}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
-        <div className="flex gap-2 mb-4">
-          {["trailer", "calendar", "pillars", "deliver"].map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {["offer", "brain", "profile", "story", "pillars", "cadence", "trailer", "calendar", "deliver"].map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
+
+        {["offer", "brain", "profile", "story", "pillars", "cadence"].includes(tab) && (
+          <Wizard
+            campaignId={campaignId}
+            embedded
+            stepProp={["offer", "brain", "profile", "story", "pillars", "cadence"].indexOf(tab)}
+            onStep={(i) => setTab(["offer", "brain", "profile", "story", "pillars", "cadence"][i])}
+            onExit={() => setTab("calendar")}
+          />
+        )}
 
         {tab === "calendar" && (
           <Card className="p-4">
@@ -633,11 +644,6 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
             </div>
           </Card>
-        )}
-        {tab === "pillars" && (
-          <div className="grid sm:grid-cols-2 gap-3">{pillars.map((p) => (
-            <Card key={p.id} className="p-4"><div className="font-semibold">{p.id}. {p.name}</div><div className="text-zinc-400 text-sm">{p.desc}</div><div className="text-xs text-accent mt-2 capitalize">{campaign.pillars?.[p.id]?.freq || "weekly"}</div></Card>
-          ))}</div>
         )}
         {tab === "trailer" && (
           <div>

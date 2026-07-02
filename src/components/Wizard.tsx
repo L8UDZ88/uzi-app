@@ -42,9 +42,12 @@ function LibraryPicker({ campaignId, slot, label, hint, lib, onPicked }: { campa
   );
 }
 
-export default function Wizard({ campaignId }: { campaignId: string }) {
+export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit }: { campaignId: string; embedded?: boolean; stepProp?: number; onStep?: (i: number) => void; onExit?: () => void }) {
   const r = useRouter();
-  const [step, setStep] = useState(0);
+  const [innerStep, setInnerStep] = useState(0);
+  // When embedded in the dashboard, the step is controlled by the parent's unified nav.
+  const step = embedded && typeof stepProp === "number" ? stepProp : innerStep;
+  const setStep = (i: number) => { if (embedded && onStep) onStep(i); else setInnerStep(i); };
   const [cfg, setCfg] = useState<any>({ campaignType: "digital", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
   const [profileBusy, setProfileBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -212,19 +215,20 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     }
     await save();
     if (step < STEPS.length - 1) setStep(step + 1);
-    else { await save({ onboarded: true }); await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }); r.push(`/campaign/${campaignId}`); }
+    else { await save({ onboarded: true }); await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }); if (embedded && onExit) onExit(); else r.push(`/campaign/${campaignId}`); }
   };
   // Jump directly to any setup step (saves first) — the top stepper is clickable.
   const goStep = async (i: number) => { await save(); setStep(i); };
-  // Jump straight to the Calendar/dashboard without hitting Back.
-  const goCalendar = async () => { await save({ onboarded: true }); r.push(`/campaign/${campaignId}`); };
+  // Jump straight to the Calendar without hitting Back.
+  const goCalendar = async () => { await save({ onboarded: true }); if (embedded && onExit) onExit(); else r.push(`/campaign/${campaignId}`); };
 
   if (!loaded) return <div className="p-10 text-zinc-500">Loading…</div>;
   const PILLARS = pillarsFor(cfg.campaignType);
   const isDigital = cfg.campaignType === "digital";
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
+    <div className={embedded ? "" : "max-w-3xl mx-auto px-6 py-10"}>
+      {!embedded && (
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s, i) => (
           <button key={s} onClick={() => goStep(i)} className="flex-1 text-left group">
@@ -237,6 +241,7 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
           <div className="text-xs mt-2 text-zinc-500 group-hover:text-accent">Calendar →</div>
         </button>
       </div>
+      )}
 
       {step === 0 && (
         <Card className="p-7">
