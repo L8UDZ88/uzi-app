@@ -944,14 +944,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                               <span className="text-zinc-600">/ {Math.round(splicePlan.total || 0)}s · clip {Math.max(0, (splicePlan.end || 0) - (splicePlan.start || 0)).toFixed(1)}s</span>
                             </div>
                             <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={spliceCaps} onChange={(e) => setSpliceCaps(e.target.checked)} /> Burn in captions</label>
-                            {spliceKind === "audio" ? (
-                              <div className="flex gap-2">
-                                <Btn kind="ghost" className="flex-1 text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Working…") : "Audiogram 🎧"}</Btn>
-                                <Btn kind="ghost" className="flex-1 text-sm" disabled={videoBusy} onClick={makeAvatar}>Avatar video 🧑</Btn>
-                              </div>
-                            ) : (
-                              <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Cutting…") : "Make clip ✂️"}</Btn>
-                            )}
+                            <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Working…") : (spliceKind === "audio" ? "Make audiogram 🎧" : "Make clip ✂️")}</Btn>
                           </div>
                         )}
                       </div>

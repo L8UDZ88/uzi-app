@@ -320,15 +320,15 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
 
       {step === 1 && (
         <Card className="p-7">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="text-xl font-bold">Connect Your Brain</h3>
-            <Btn kind="ghost" className="text-xs" disabled={syncBusy} onClick={resyncAll}>{syncBusy ? "Re-syncing…" : "↻ Re-Sync all inputs"}</Btn>
+          <div className="relative text-center">
+            <Btn kind="ghost" className="absolute right-0 top-0 text-xs" disabled={syncBusy} onClick={resyncAll}>{syncBusy ? "Re-syncing…" : "↻ Re-Sync all inputs"}</Btn>
+            <h3 className="text-3xl font-bold">Connect Your Brain</h3>
+            <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
           </div>
-          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-5">
             {/* LEFT — Inputs (everything that feeds the brain) */}
-            <div className="xl:col-span-7 space-y-5">
+            <div className="xl:col-span-8 space-y-5">
               <div className="text-xs font-semibold text-accent uppercase tracking-wide">Inputs</div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className={`p-5 rounded-xl border ${drive.folderId ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
@@ -375,7 +375,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
             <div className="mt-6">
               <div className="text-sm font-semibold text-zinc-200">Content libraries <span className="text-[11px] font-normal text-zinc-500">— a separate folder per type, so it's clear what each post pulls from. Uzi splices these into posts.</span></div>
               <div className="grid sm:grid-cols-3 gap-3 mt-3">
-                {([["documents", "Documents", ".docx / PDF — copy, frameworks, scripts"], ["audio", "Audio", "Podcasts, VO, recordings"], ["video", "Video", "Talking-head, demos, b-roll"]] as const).map(([slot, label, hint]) => (
+                {([["documents", "Copywriting", ".docx / PDF — copy, frameworks, scripts"], ["audio", "Audio", "Podcasts, VO, recordings"], ["video", "Video", "Talking-head, demos, b-roll"]] as const).map(([slot, label, hint]) => (
                   <LibraryPicker key={slot} campaignId={campaignId} slot={slot} label={label} hint={hint}
                     lib={cfg.inputs?.libraries?.[slot]}
                     onPicked={(info) => u({ inputs: { ...cfg.inputs, libraries: { ...(cfg.inputs?.libraries || {}), [slot]: info } } })} />
@@ -423,31 +423,10 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
             </div>
           </div>
 
-          <div className="mt-5">
-            <div className="text-sm font-semibold text-zinc-200">Presenter / avatar photo</div>
-            <div className="text-zinc-400 text-sm">A clear head-and-shoulders photo of your presenter. Uzi can turn any Audio-library clip into a talking-avatar video, lip-synced to the audio.</div>
-            <div className="flex flex-wrap gap-3 mt-3">
-              {products.filter((p) => p.kind === "avatar").map((p) => (
-                <div key={p.id} className="relative w-20 h-20 rounded-lg border border-zinc-700 overflow-hidden bg-zinc-900">
-                  <img src={`/api/product/${p.id}`} alt={p.name} className="w-full h-full object-cover" />
-                  <button onClick={() => delProduct(p.id)} className="absolute top-0.5 right-0.5 text-[10px] bg-black/70 text-white rounded px-1">✕</button>
-                </div>
-              ))}
-              <label className="w-20 h-20 rounded-lg border border-dashed border-zinc-700 bg-zinc-800/40 flex items-center justify-center cursor-pointer text-2xl text-zinc-500">
-                {prodBusy ? "…" : "+"}
-                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => uploadProduct(e.target.files?.[0], "avatar")} />
-              </label>
-            </div>
-          </div>
-            </div>
-
-            {/* CENTER — the brain */}
-            <div className="hidden xl:flex xl:col-span-2 items-center justify-center">
-              <div className="w-20 h-20 rounded-full bg-lime-400/10 border border-lime-400/40 flex items-center justify-center text-4xl shadow-[0_0_40px_-10px_rgba(163,230,53,0.6)]">🧠</div>
             </div>
 
             {/* RIGHT — Outputs (channels connected for publishing) */}
-            <div className="xl:col-span-3">
+            <div className="xl:col-span-4">
               <div className="text-xs font-semibold text-accent uppercase tracking-wide mb-1">Outputs</div>
               <div className="text-[11px] text-zinc-500 mb-3">Channels connected for publishing. <span className="text-lime-400">Green</span> = ready, <span className="text-red-400">red</span> = connect it.</div>
               <div className="space-y-1.5">
