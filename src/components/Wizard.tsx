@@ -214,6 +214,10 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     if (step < STEPS.length - 1) setStep(step + 1);
     else { await save({ onboarded: true }); await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }); r.push(`/campaign/${campaignId}`); }
   };
+  // Jump directly to any setup step (saves first) — the top stepper is clickable.
+  const goStep = async (i: number) => { await save(); setStep(i); };
+  // Jump straight to the Calendar/dashboard without hitting Back.
+  const goCalendar = async () => { await save({ onboarded: true }); r.push(`/campaign/${campaignId}`); };
 
   if (!loaded) return <div className="p-10 text-zinc-500">Loading…</div>;
   const PILLARS = pillarsFor(cfg.campaignType);
@@ -223,11 +227,15 @@ export default function Wizard({ campaignId }: { campaignId: string }) {
     <div className="max-w-3xl mx-auto px-6 py-10">
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s, i) => (
-          <div key={s} className="flex-1">
-            <div className={`h-1.5 rounded-full ${i <= step ? "bg-accent" : "bg-zinc-800"}`} />
-            <div className={`text-xs mt-2 ${i <= step ? "text-zinc-200" : "text-zinc-600"}`}>{s}</div>
-          </div>
+          <button key={s} onClick={() => goStep(i)} className="flex-1 text-left group">
+            <div className={`h-1.5 rounded-full ${i <= step ? "bg-accent" : "bg-zinc-800 group-hover:bg-zinc-700"}`} />
+            <div className={`text-xs mt-2 ${i === step ? "text-accent font-semibold" : i < step ? "text-zinc-200" : "text-zinc-600 group-hover:text-zinc-400"}`}>{s}</div>
+          </button>
         ))}
+        <button onClick={goCalendar} className="flex-1 text-left group">
+          <div className="h-1.5 rounded-full bg-zinc-800 group-hover:bg-zinc-700" />
+          <div className="text-xs mt-2 text-zinc-500 group-hover:text-accent">Calendar →</div>
+        </button>
       </div>
 
       {step === 0 && (

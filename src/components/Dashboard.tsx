@@ -141,6 +141,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [sceneStyle, setSceneStyle] = useState<"hero" | "lifestyle">("hero");
   const [trailer, setTrailer] = useState<any>(null);
   const [trailerBusy, setTrailerBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoMsg, setAutoMsg] = useState("");
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -484,6 +486,22 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       if (d.videoUrl) { setVideoUrl(d.videoUrl); setVideoStatus(""); } else alert(d.error || "Avatar generation failed.");
     } catch (e: any) { alert(String(e?.message || "Avatar failed.")); } finally { setVideoBusy(false); }
   };
+  // Autopilot: one click drafts copy for every queued post (resumable), then refreshes the calendar.
+  const runAutopilot = async () => {
+    setAutoBusy(true); setAutoMsg("Starting…");
+    try {
+      for (let i = 0; i < 400; i++) {
+        const d = await postJSON("/api/autopilot/advance", { campaignId }, 90000);
+        if (d.error) { alert(d.error); break; }
+        setAutoMsg(`Drafted ${d.drafted}/${d.total}…`);
+        if (d.done) {
+          setAutoMsg(`✓ Drafted ${d.drafted} posts — review below.`);
+          try { const r2 = await (await fetch(`/api/campaigns/${campaignId}/schedule`)).json(); if (Array.isArray(r2.slots)) setSlots(r2.slots); } catch { /* ignore */ }
+          break;
+        }
+      }
+    } catch { alert("Autopilot hit a snag — try again."); } finally { setAutoBusy(false); }
+  };
   const loadTrailer = async () => {
     try { const d = await (await fetch(`/api/trailer/get?campaignId=${campaignId}`)).json(); if (d.job) setTrailer(d.job); } catch { /* ignore */ }
   };
@@ -578,7 +596,11 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             <div className="mb-3 px-2 space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="font-bold">Calendar · click a post to draft it</div>
-                <Btn className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
+                <div className="flex items-center gap-2">
+                  {autoMsg && <span className="text-xs text-accent">{autoMsg}</span>}
+                  <Btn className="text-xs px-3 py-1.5" disabled={autoBusy} onClick={runAutopilot}>{autoBusy ? "Drafting…" : "⚡ Generate all copy"}</Btn>
+                  <Btn kind="ghost" className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap text-xs">
                 <span className="text-zinc-500">From</span>
