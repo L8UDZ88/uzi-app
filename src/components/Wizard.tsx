@@ -1,12 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Btn } from "./ui";
 import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForFormat, formatsForPillar } from "@/lib/constants";
 import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 import { GROWFAST_HERO_FRAME, GROWFAST_PROFILE, isGrowFastBrand, BRAIN_LOCK_WARNING } from "@/lib/presets";
 
-const STEPS = ["Offer", "Brain", "Profile", "Story", "Pillars"];
+const STEPS = ["Offer", "Brain", "Profile", "Hero Frame"];
+
+// Which pillar(s) each Hero Frame input fuels — drives the connector lines + colors.
+const FIELD_PILLARS: Record<string, number[]> = {
+  hero: [1], dream: [2], obstacle: [3], cost: [3], enemy: [3], mechanism: [4],
+  conditions: [6, 8], causality: [6], system: [6], inputs: [6],
+  multiplier: [5, 8], scoreboard: [5], call: [7],
+};
+const PILLAR_COLORS: Record<number, string> = {
+  1: "#a3e635", 2: "#22d3ee", 3: "#f472b6", 4: "#f59e0b", 5: "#34d399", 6: "#818cf8", 7: "#fb7185", 8: "#c084fc",
+};
 
 // A single typed content-library folder picker (Documents / Audio / Video). Connects its own
 // Drive folder via the `slot` param so each library is a distinct, visible source.
@@ -49,6 +59,42 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
   const step = embedded && typeof stepProp === "number" ? stepProp : innerStep;
   const setStep = (i: number) => { if (embedded && onStep) onStep(i); else setInnerStep(i); };
   const [cfg, setCfg] = useState<any>({ campaignType: "digital", pillars: {}, channels: {}, inputs: {}, cadence: "steady" });
+  // Hero Frame wiring: refs on each input box + pillar card → SVG connector lines between them.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
+  const pillarRefs = useRef<Record<number, HTMLElement | null>>({});
+  const [lines, setLines] = useState<{ id: string; d: string; color: string; pid: number; fid: string }[]>([]);
+  const [hover, setHover] = useState<string | null>(null); // "p:3" | "f:hero" | null
+  useLayoutEffect(() => {
+    if (step !== 3) return;
+    const compute = () => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const wr = wrap.getBoundingClientRect();
+      const next: { id: string; d: string; color: string; pid: number; fid: string }[] = [];
+      for (const f of HERO_FRAME_FIELDS) {
+        const el = fieldRefs.current[f.id];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const x1 = r.right - wr.left, y1 = r.top - wr.top + r.height / 2;
+        for (const pid of FIELD_PILLARS[f.id] || []) {
+          const pel = pillarRefs.current[pid];
+          if (!pel) continue;
+          const pr = pel.getBoundingClientRect();
+          const x2 = pr.left - wr.left, y2 = pr.top - wr.top + pr.height / 2;
+          const dx = Math.max(40, (x2 - x1) / 2);
+          next.push({ id: `${f.id}-${pid}`, d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`, color: PILLAR_COLORS[pid] || "#71717a", pid, fid: f.id });
+        }
+      }
+      setLines(next);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (wrapRef.current) ro.observe(wrapRef.current);
+    window.addEventListener("resize", compute);
+    const t = setTimeout(compute, 300);
+    return () => { ro.disconnect(); window.removeEventListener("resize", compute); clearTimeout(t); };
+  }, [step, cfg]);
   const [profileBusy, setProfileBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [drive, setDrive] = useState<any>({ configured: false, connected: false });
@@ -229,7 +275,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
   const next = async () => {
     // "Now in [city]" requires at least one city before leaving the Pillars step.
     const nowin = pillarsFor(cfg.campaignType).find((p) => /\[city\]/i.test(p.name));
-    if (step === 4 && nowin && (cfg.pillars?.[nowin.id]?.on ?? true)) {
+    if (step === 3 && nowin && (cfg.pillars?.[nowin.id]?.on ?? true)) {
       if (!String(cfg.pillars?.[nowin.id]?.cities || "").trim()) {
         alert(`Add at least one city for "${nowin.name}" — each post anchors to a specific city. (Or switch that pillar off if you don't want city-launch posts.)`);
         return;
@@ -448,37 +494,13 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
 
       {step === 3 && (() => {
         const s = cfg.inputs?.story || {};
+        const lineOn = (l: { pid: number; fid: string }) => hover == null || hover === `p:${l.pid}` || hover === `f:${l.fid}`;
         return (
-        <Card className="p-7">
-          <h3 className="text-xl font-bold">Your campaign Story — the Hero Frame</h3>
-          <p className="text-zinc-400 text-sm mt-1">The one story every post advances, told in the Hero Frame's stages. AI drafts it from your brand + Brain; review and edit. ★ = load-bearing.</p>
-
-          <div className="flex gap-2 mt-4">
-            <Btn className="flex-1" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft my story with AI ✨"}</Btn>
-            <Btn kind="ghost" onClick={clearStory}>Clear</Btn>
-          </div>
-
-          {/* Hero Frame as an ordered narrative — the framework's own structure, stage by stage */}
-          <div className="mt-5 border-l-2 border-zinc-800 pl-5 space-y-4">
-            {HERO_FRAME_FIELDS.map((f, i) => (
-              <div key={f.id} className="relative">
-                <span className={`absolute -left-[26px] top-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${f.core ? "bg-accent text-zinc-950" : "bg-zinc-700 text-zinc-300"}`}>{i + 1}</span>
-                <label className="text-xs font-semibold text-zinc-200">{f.name}{f.core ? " ★" : ""}</label>
-                <div className="text-[11px] text-zinc-600 mb-1">{f.hint}</div>
-                <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm" />
-              </div>
-            ))}
-          </div>
-        </Card>
-        );
-      })()}
-
-      {step === 4 && (
         <Card className="p-7">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-xl font-bold">Set your pillars</h3>
-              <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars and set each one's format + channels.</p>
+              <h3 className="text-xl font-bold">Hero Frame — the engine behind every post</h3>
+              <p className="text-zinc-400 text-sm mt-1">Your customer's story (left) directs the 8 pillar outputs (right) — the pillars are its social expression, stage by stage. Lines show what fuels what. ★ = load-bearing.</p>
             </div>
             <div className="text-right shrink-0">
               <div className="text-[11px] text-zinc-400 mb-1">Schedule</div>
@@ -486,82 +508,116 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-lime-400/30 bg-lime-400/5 p-4 text-center">
-            <div className="text-sm font-bold tracking-tight">Customer-as-Hero pillar system</div>
-            <p className="text-xs text-zinc-400 max-w-lg mx-auto mt-1">Each pillar is a stage in your customer's transformation — drawn from your Hero Frame in the Story step. The product only ever appears as the tool the hero picks up. Tune the format and channels per pillar below.</p>
+          <div className="flex gap-2 mt-4 max-w-md">
+            <Btn className="flex-1" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft with AI ✨"}</Btn>
+            <Btn kind="ghost" onClick={clearStory}>Clear</Btn>
           </div>
 
-          <div className="space-y-2 mt-5">
-            {PILLARS.map((p) => {
-              const pc = cfg.pillars?.[p.id] || {};
-              const on = pc.on ?? true;
-              const freq = pc.freq ?? "weekly";
-              const cities = pc.cities ?? "";
-              // Only formats applicable to this pillar are offered (carousel excluded everywhere for now).
-              const applicableFormats = formatsForPillar(p);
-              const savedFormat = pc.format ?? p.format;
-              // Auto-migrate any now-unavailable saved format (e.g. old carousel) to the pillar default.
-              const format = applicableFormats.includes(savedFormat) ? savedFormat : p.format;
-              const source = pc.source ?? p.source ?? "ai";
-              const chans: string[] = pc.channels ?? p.channels ?? [];
-              const allowedChans = channelsForFormat(format);
-              // Only channels this format can natively carry are eligible; drop any stragglers.
-              const selChans = chans.filter((cid) => allowedChans.includes(cid));
-              const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: selChans, ...patch } } });
-              // Changing format prunes selected channels to the new format's compatible set.
-              const setFormat = (f: any) => setP({ format: f, channels: selChans.filter((cid) => channelsForFormat(f).includes(cid)) });
-              const toggleChan = (cid: string) => setP({ channels: selChans.includes(cid) ? selChans.filter((x) => x !== cid) : [...selChans, cid] });
-              const isNowin = /\[city\]/i.test(p.name);
-              return (
-                <div key={p.id} className={`rounded-xl border ${on ? "border-zinc-700 bg-zinc-800/50" : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
-                  <div className="flex items-center gap-4 p-3">
-                    <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
-                    <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
-                  </div>
-                  {on && (
-                    <div className="px-3 pb-3 space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
-                        <select value={format} onChange={(e) => setFormat(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
-                          {applicableFormats.map((fid) => { const f = CONTENT_FORMATS.find((x) => x.id === fid); return f ? <option key={f.id} value={f.id}>{f.name}</option> : null; })}
-                        </select>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-400 w-16 shrink-0">Source:</span>
-                        <span className="text-xs text-zinc-300">{format === "longvideo" ? "Your uploaded video — webcam / screen-share (no AI)" : source === "real" ? "Real footage — your connected Drive folder" : "AI generated"}</span>
-                      </div>
-                      <div className="flex items-start gap-2 flex-wrap">
-                        <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {CHANNELS.filter((c) => allowedChans.includes(c.id)).map((c) => {
-                            const sel = selChans.includes(c.id);
-                            const spot = c.id === "spotify"; // audio track — shown in yellow
-                            const on = spot ? "border-yellow-400 bg-yellow-400 text-zinc-950 font-medium" : "border-lime-400 bg-lime-400 text-zinc-950 font-medium";
-                            const off = spot ? "border-yellow-400/50 text-yellow-300" : "border-zinc-700 text-zinc-300";
-                            return (
-                              <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? on : off}`}>
-                                {sel ? "✓ " : ""}{c.name}{spot ? " (audio)" : ""}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <span className="text-[11px] text-zinc-500 pt-1 ml-auto shrink-0">→ {selChans.length} {selChans.length === 1 ? "post" : "posts"}</span>
-                      </div>
-                      <div className="text-[11px] text-zinc-600">Only channels that natively carry a {CONTENT_FORMATS.find((f) => f.id === format)?.name || format} are shown.</div>
-                      {isNowin && (
-                        <div>
-                          <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
-                          <input value={cities} onChange={(e) => setP({ cities: e.target.value })} placeholder="e.g. Catania, Messina, Siracusa" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-1" />
-                        </div>
-                      )}
+          <div ref={wrapRef} className="relative mt-5 grid lg:grid-cols-2 gap-x-20 gap-y-3">
+            {/* connector lines — input → pillar it fuels */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none hidden lg:block z-0" style={{ overflow: "visible" }}>
+              {lines.map((l) => (
+                <path key={l.id} d={l.d} fill="none" stroke={l.color} strokeWidth={hover === `p:${l.pid}` || hover === `f:${l.fid}` ? 2.5 : 1.5} style={{ opacity: lineOn(l) ? 0.9 : 0.1, transition: "opacity .15s, stroke-width .15s" }} />
+              ))}
+            </svg>
+
+            {/* LEFT — Customer Frame inputs */}
+            <div className="relative z-10 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Customer Frame · inputs</div>
+              {HERO_FRAME_FIELDS.map((f, i) => {
+                const label = f.name === "Hero" ? "Customer" : f.name;
+                const pids = FIELD_PILLARS[f.id] || [];
+                return (
+                  <div key={f.id} ref={(el) => { fieldRefs.current[f.id] = el; }}
+                    onMouseEnter={() => setHover(`f:${f.id}`)} onMouseLeave={() => setHover(null)}
+                    className={`rounded-lg border bg-zinc-900/40 p-2.5 transition ${hover === `f:${f.id}` ? "border-zinc-500" : "border-zinc-800"}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${f.core ? "bg-accent text-zinc-950" : "bg-zinc-700 text-zinc-300"}`}>{i + 1}</span>
+                      <label className="text-xs font-semibold text-zinc-200">{label}{f.core ? " ★" : ""}</label>
+                      <span className="ml-auto flex gap-1 shrink-0">{pids.map((pid) => <span key={pid} className="w-2 h-2 rounded-full" style={{ background: PILLAR_COLORS[pid] }} title={`Fuels pillar ${pid}`} />)}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <div className="text-[10px] text-zinc-600 mt-0.5 mb-1">{f.hint}</div>
+                    <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-2.5 py-1.5 text-xs" />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* RIGHT — pillar content outputs */}
+            <div className="relative z-10 space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Pillars · content outputs</div>
+              {PILLARS.map((p) => {
+                const pc = cfg.pillars?.[p.id] || {};
+                const on = pc.on ?? true;
+                const freq = pc.freq ?? "weekly";
+                const cities = pc.cities ?? "";
+                const applicableFormats = formatsForPillar(p);
+                const savedFormat = pc.format ?? p.format;
+                const format = applicableFormats.includes(savedFormat) ? savedFormat : p.format;
+                const source = pc.source ?? p.source ?? "ai";
+                const chans: string[] = pc.channels ?? p.channels ?? [];
+                const allowedChans = channelsForFormat(format);
+                const selChans = chans.filter((cid) => allowedChans.includes(cid));
+                const setP = (patch: any) => u({ pillars: { ...cfg.pillars, [p.id]: { on, freq, cities, format, source, channels: selChans, ...patch } } });
+                const setFormat = (f: any) => setP({ format: f, channels: selChans.filter((cid) => channelsForFormat(f).includes(cid)) });
+                const toggleChan = (cid: string) => setP({ channels: selChans.includes(cid) ? selChans.filter((x) => x !== cid) : [...selChans, cid] });
+                const isNowin = /\[city\]/i.test(p.name);
+                const color = PILLAR_COLORS[p.id] || "#71717a";
+                return (
+                  <div key={p.id} ref={(el) => { pillarRefs.current[p.id] = el; }}
+                    onMouseEnter={() => setHover(`p:${p.id}`)} onMouseLeave={() => setHover(null)}
+                    style={{ borderLeftColor: color }}
+                    className={`rounded-xl border border-l-4 ${on ? (hover === `p:${p.id}` ? "border-zinc-500 bg-zinc-800/70" : "border-zinc-700 bg-zinc-800/50") : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
+                    <div className="flex items-center gap-4 p-3">
+                      <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
+                      <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
+                    </div>
+                    {on && (
+                      <div className="px-3 pb-3 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-zinc-400 w-16 shrink-0">Format:</span>
+                          <select value={format} onChange={(e) => setFormat(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
+                            {applicableFormats.map((fid) => { const f = CONTENT_FORMATS.find((x) => x.id === fid); return f ? <option key={f.id} value={f.id}>{f.name}</option> : null; })}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400 w-16 shrink-0">Source:</span>
+                          <span className="text-xs text-zinc-300">{format === "longvideo" ? "Your uploaded video — webcam / screen-share (no AI)" : source === "real" ? "Real footage — your connected Drive folder" : "AI generated"}</span>
+                        </div>
+                        <div className="flex items-start gap-2 flex-wrap">
+                          <span className="text-xs text-zinc-400 w-16 shrink-0 pt-1">Channels:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {CHANNELS.filter((c) => allowedChans.includes(c.id)).map((c) => {
+                              const sel = selChans.includes(c.id);
+                              const spot = c.id === "spotify";
+                              const onCls = spot ? "border-yellow-400 bg-yellow-400 text-zinc-950 font-medium" : "border-lime-400 bg-lime-400 text-zinc-950 font-medium";
+                              const off = spot ? "border-yellow-400/50 text-yellow-300" : "border-zinc-700 text-zinc-300";
+                              return (
+                                <button key={c.id} onClick={() => toggleChan(c.id)} className={`px-2.5 py-1 rounded-full text-xs border ${sel ? onCls : off}`}>
+                                  {sel ? "✓ " : ""}{c.name}{spot ? " (audio)" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <span className="text-[11px] text-zinc-500 pt-1 ml-auto shrink-0">→ {selChans.length} {selChans.length === 1 ? "post" : "posts"}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-600">Only channels that natively carry a {CONTENT_FORMATS.find((f) => f.id === format)?.name || format} are shown.</div>
+                        {isNowin && (
+                          <div>
+                            <label className="text-xs text-zinc-400">Cities (comma-separated) — one post per city, each anchored to that city <span className="text-accent">*required</span></label>
+                            <input value={cities} onChange={(e) => setP({ cities: e.target.value })} placeholder="e.g. Catania, Messina, Siracusa" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-1" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Card>
-      )}
+        );
+      })()}
 
       <div className="flex justify-between mt-6">
         <Btn kind="ghost" onClick={() => setStep(Math.max(0, step - 1))} style={{ visibility: step === 0 ? "hidden" : "visible" }}>Back</Btn>

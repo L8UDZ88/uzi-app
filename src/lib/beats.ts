@@ -26,7 +26,7 @@ export const ARC_PHYSICAL: Beat[] = [
 
 // DIGITAL — 12 beats, 3 per S.
 export const ARC_DIGITAL: Beat[] = [
-  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "The Hero's World" },
+  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "The Customer's World" },
   { id: "tension", name: "The Tension", phase: "Start", job: "Name the pain / the broken old way in their world.", keys: ["obstacle", "enemy"], pillar: "The Obstacle" },
   { id: "cost", name: "The Cost", phase: "Start", job: "What staying stuck actually costs them, in specifics.", keys: ["cost"], pillar: "The Obstacle", alts: ["Proof of Crossing"] },
   { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The contrarian insight / the one thing that changes everything.", keys: ["mechanism"], pillar: "The Turning Point" },

@@ -64,7 +64,7 @@ function pillarCopy(pillar: string, b: Brand): Copy {
       cta: "Find your moment →", tags: [slug(brand), "findyour" + slug(region), "ambient"],
     },
     // ---- Digital campaign pillars — Customer-as-Hero (Hero Frame) ----
-    "The Hero's World": {
+    "The Customer's World": {
       headline: "You, right now",
       caption: `If your day looks like this, you're not alone. ${tag} We see exactly where you are — and where this goes next.`,
       brief: "Relatable scene of the customer's current reality (their desk, their day, their world). The hero, not the product.",

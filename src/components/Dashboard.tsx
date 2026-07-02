@@ -686,8 +686,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4 flex-wrap items-center">
-          {["offer", "brain", "profile", "story", "pillars", "calendar", "deliver"].map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
+          {["offer", "brain", "profile", "heroframe", "calendar", "deliver"].map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t === "heroframe" ? "Hero Frame" : t}</button>
           ))}
           <button key="trailer" onClick={() => setTab("trailer")} className={`ml-auto px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === "trailer" ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>🎬 Trailer</button>
         </div>
@@ -939,12 +939,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           </Card>
         )}
 
-        {["offer", "brain", "profile", "story", "pillars"].includes(tab) && (
+        {["offer", "brain", "profile", "heroframe"].includes(tab) && (
           <Wizard
             campaignId={campaignId}
             embedded
-            stepProp={["offer", "brain", "profile", "story", "pillars"].indexOf(tab)}
-            onStep={(i) => setTab(["offer", "brain", "profile", "story", "pillars"][i])}
+            stepProp={["offer", "brain", "profile", "heroframe"].indexOf(tab)}
+            onStep={(i) => setTab(["offer", "brain", "profile", "heroframe"][i])}
             onExit={() => setTab("calendar")}
           />
         )}
@@ -991,8 +991,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 );
               })()}
               <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-zinc-500 bg-zinc-900/60 rounded-lg px-2.5 py-1.5">
-                <button onClick={() => setTab("pillars")} className="text-zinc-300 hover:text-accent underline">Pillars</button>
-                <span className="text-zinc-600">set formats + channels</span>
+                <button onClick={() => setTab("heroframe")} className="text-zinc-300 hover:text-accent underline">Hero Frame</button>
+                <span className="text-zinc-600">frame + formats + channels</span>
                 <span className="text-zinc-600">→</span>
                 <span className="text-accent font-semibold">Calendar</span>
                 <span className="text-zinc-600">draft &amp; approve (queued → drafted → approved → ready)</span>

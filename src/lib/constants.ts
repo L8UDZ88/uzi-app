@@ -38,7 +38,7 @@ export const PILLARS_PHYSICAL: Pillar[] = [
 // transformation — the product only ever appears as the tool the hero picks up, never the star.
 // Copy for each pillar is drawn from the brand's Hero Frame inputs set in the Story step.
 export const PILLARS_DIGITAL: Pillar[] = [
-  { id: 1, name: "The Hero's World", desc: "Mirror the customer's current reality so they feel seen — their day, their identity, their world (Hero)", src: "Concept / relatable scene", media: "image", format: "photo", formats: ["photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
+  { id: 1, name: "The Customer's World", desc: "Mirror the customer's current reality so they feel seen — their day, their identity, their world (Customer)", src: "Concept / relatable scene", media: "image", format: "photo", formats: ["photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
   { id: 2, name: "The Dream", desc: "Paint the future they want as vividly theirs — the after-state, made personal (Dream Outcome)", src: "Aspirational scene", media: "image", format: "photo", formats: ["photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
   { id: 3, name: "The Obstacle", desc: "Name the enemy / old way keeping them stuck, and what staying costs them (Obstacle + Enemy + Cost)", src: "Concept / POV", media: "image", format: "text", formats: ["text", "photo", "reel", "graphic"], channels: ["linkedin", "x", "instagram"] },
   { id: 4, name: "The Turning Point", desc: "The one insight that changes everything — the reframe that opens the path (Core Mechanism)", src: "Talking head / POV", media: "video", format: "text", formats: ["text", "reel", "longvideo", "graphic"], channels: ["linkedin", "x"] },
