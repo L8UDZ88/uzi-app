@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { generateImage, generateImageWithProduct, generateBackdrop, imageEnabled } from "@/lib/image";
-import { integrateProduct, infuseLogoScene, integrateEnabled } from "@/lib/integrate";
+import { integrateProduct, integrateEnabled } from "@/lib/integrate";
 import { generateFlux, fluxEnabled } from "@/lib/flux";
 
 export const maxDuration = 60;

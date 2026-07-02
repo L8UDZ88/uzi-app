@@ -630,7 +630,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
           <Card className="p-5"><div className="text-zinc-400 text-xs">Active pillars</div><div className="text-3xl font-black text-accent">{pillars.length}</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Posts</div><div className="text-3xl font-black">{slots.length}</div></Card>
-          <Card className="p-5"><div className="text-zinc-400 text-xs">Cadence</div><div className="text-xl font-bold capitalize mt-1">{campaign.cadence}</div></Card>
+          <Card className="p-5"><div className="text-zinc-400 text-xs">Schedule</div><div className="text-xl font-bold mt-1">1 / day</div><div className="text-[11px] text-zinc-500">Mon–Sun · 8am ET</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4 flex-wrap">
@@ -1095,7 +1095,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               {preview.mediaUrl
                 ? (isVideoUrl(preview.mediaUrl)
                     ? <video src={preview.mediaUrl} controls className="w-full rounded-xl bg-black" />
-                    : <PostPreview channel={preview.channel || "Instagram"} format={preview.format} aspect={aspectFor(preview.channel, preview.format)} draft={{ pillar: preview.pillar, channel: preview.channel, headline: "", caption: preview.caption || "", hashtags: [], visualBrief: "", cta: "" }} handle={campaign.handle} imageUrl={preview.mediaUrl || undefined} />)
+                    : <PostPreview channel={preview.channel || "Instagram"} format={preview.format} aspect={aspectFor(preview.channel, preview.format)} draft={{ headline: "", caption: preview.caption || "", hashtags: [], visualBrief: "", cta: "" }} handle={campaign.handle} imageUrl={preview.mediaUrl || undefined} />)
                 : <div className="text-sm text-zinc-400">No media on this post yet.</div>}
               {preview.mediaUrl && isVideoUrl(preview.mediaUrl) && preview.caption && <div className="text-sm text-zinc-200 whitespace-pre-wrap">{preview.caption}</div>}
               {preview.externalUrl && <a href={preview.externalUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-300 underline">view live post ↗</a>}

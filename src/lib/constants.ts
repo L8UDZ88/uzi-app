@@ -87,41 +87,6 @@ export const CHANNEL_FORMATS: Record<string, Format[]> = {
 
 export type Output = { channelId: string; channelName: string; glyph: string; formatId: string; formatName: string; aspect: Aspect };
 
-// Active outputs from a channels config keyed "channelId:formatId" (with back-compat for old plain "channelId" booleans).
-export function activeOutputs(channels: Record<string, boolean>): Output[] {
-  const out: Output[] = [];
-  for (const ch of CHANNELS) {
-    const formats = CHANNEL_FORMATS[ch.id] || [];
-    let any = false;
-    for (const f of formats) {
-      if (channels?.[`${ch.id}:${f.id}`]) {
-        out.push({ channelId: ch.id, channelName: ch.name, glyph: ch.glyph, formatId: f.id, formatName: f.name, aspect: f.aspect });
-        any = true;
-      }
-    }
-    if (!any && channels?.[ch.id] && formats[0]) {
-      out.push({ channelId: ch.id, channelName: ch.name, glyph: ch.glyph, formatId: formats[0].id, formatName: formats[0].name, aspect: formats[0].aspect });
-    }
-  }
-  return out;
-}
-
-// Which output aspects each media type is allowed to use. Keeps pillars on the right outputs:
-// e.g. a "video" pillar (Ambient film) never schedules onto a podcast (audio) or text slot.
-// Aspects each media type may use, in preference order (best format first per channel).
-const MEDIA_ASPECTS: Record<MediaKind, Aspect[]> = {
-  video: ["vertical", "wide", "feed"],               // Reel/Short/TikTok/YouTube/feed-video
-  visual: ["feed", "carousel", "vertical", "wide", "text"], // image OR video — any visual channel
-  image: ["feed", "carousel", "text", "vertical"],   // photo — image OR short video channels
-  graphic: ["feed", "carousel", "text"],             // designed still / announcement (feed/post/carousel)
-  text: ["text", "carousel"],
-  audio: ["audio"],
-  any: ["feed", "vertical", "wide", "carousel", "text", "audio"],
-};
-export function outputMatchesPillar(media: MediaKind, aspect: Aspect): boolean {
-  return (MEDIA_ASPECTS[media] || MEDIA_ASPECTS.any).includes(aspect);
-}
-
 // Map a pillar's content format to the right native format on a given channel (with graceful
 // fallback so every channel always gets something appropriate).
 const FORMAT_FALLBACK: Record<ContentFormat, string[]> = {

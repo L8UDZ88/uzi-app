@@ -285,33 +285,36 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
       {step === 2 && (
         <Card className="p-7">
           <h3 className="text-xl font-bold">Brand profile</h3>
-          <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this. Let the AI draft it from your connected folder, then review.</p>
+          <p className="text-zinc-400 text-sm mt-1">Just identity + guardrails. Tagline, positioning, voice and product are written from your Brain — this page only holds what the Brain can't (name, language, hard rules).</p>
           <div className="flex gap-2 mt-3">
             <Btn className="flex-1" disabled={profileBusy} onClick={genProfile}>{profileBusy ? "Drafting from your brand…" : "Draft profile from my brand ✨"}</Btn>
             <Btn kind="ghost" onClick={clearProfile}>Clear</Btn>
           </div>
           <div className="text-[11px] text-zinc-600 mt-1 mb-3">Pulls from your connected Drive folder (Inputs step). Fills blanks; keeps anything you've written.</div>
+          {/* Identity + guardrails — the only things the Brain can't provide */}
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
             <input placeholder="Brand name" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.name || ""} onChange={(e) => u({ name: e.target.value })} />
             <input placeholder="Handle (@brand)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.handle || ""} onChange={(e) => u({ handle: e.target.value })} />
-            <input placeholder="Tagline" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.tagline || ""} onChange={(e) => u({ tagline: e.target.value })} />
-            <input placeholder={isDigital ? "Category / ICP (e.g. B2B SaaS, ops teams)" : "Region (e.g. Sicily)"} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.region || ""} onChange={(e) => u({ region: e.target.value })} />
-            <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
+            <select value={cfg.inputs?.brandKit?.language || "en"} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), language: e.target.value } } })} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm">
+              <option value="en">Language: English</option>
+              <option value="it">Language: Italian</option>
+              <option value="bilingual">Language: Bilingual (EN + IT)</option>
+            </select>
+            <input placeholder="Signature phrases (comma-sep) — optional" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.inputs?.brandKit?.phrases || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), phrases: e.target.value } } })} />
+            <input placeholder="Never do… (hard rule — e.g. never AI-draw the product)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.donts || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), donts: e.target.value } } })} />
           </div>
-          <div className="mt-5">
-            <div className="text-sm font-semibold text-zinc-200">Brand kit — keeps every generation on-brand</div>
-            <div className="grid sm:grid-cols-2 gap-3 mt-2">
-              <select value={cfg.inputs?.brandKit?.language || "en"} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), language: e.target.value } } })} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm">
-                <option value="en">Language: English</option>
-                <option value="it">Language: Italian</option>
-                <option value="bilingual">Language: Bilingual (EN + IT)</option>
-              </select>
-              <input placeholder="Signature phrases (comma-sep)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.inputs?.brandKit?.phrases || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), phrases: e.target.value } } })} />
-              <textarea placeholder="What is the product, exactly? (e.g. Blue Kamikaze — a blue ready-to-drink Sicilian cocktail, 6% ABV, slim can)" rows={2} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.product || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), product: e.target.value } } })} />
-              <input placeholder="Never do… (e.g. never depict a restaurant/menu; never AI-draw the can)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.donts || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), donts: e.target.value } } })} />
+          <p className="text-xs text-zinc-500 mt-2">Language and hard rules govern every generation. Everything else comes from your Brain.</p>
+
+          <details className="mt-4">
+            <summary className="text-sm font-semibold cursor-pointer select-none text-zinc-300">Advanced — override tagline / positioning / voice / product</summary>
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              <input placeholder="Tagline" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.tagline || ""} onChange={(e) => u({ tagline: e.target.value })} />
+              <input placeholder={isDigital ? "Category / ICP (e.g. B2B SaaS, ops teams)" : "Region (e.g. Sicily)"} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.region || ""} onChange={(e) => u({ region: e.target.value })} />
+              <input placeholder="Voice (warm, bold, short punchy lines…)" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.voice || ""} onChange={(e) => u({ voice: e.target.value })} />
+              <textarea placeholder="What is the product, exactly?" rows={2} className="bg-zinc-800 rounded-xl px-4 py-3 text-sm sm:col-span-2" value={cfg.inputs?.brandKit?.product || ""} onChange={(e) => u({ inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), product: e.target.value } } })} />
             </div>
-            <p className="text-xs text-zinc-500 mt-2">These force every caption, voiceover, and image to stay on-brand and in the right language.</p>
-          </div>
+            <div className="text-[11px] text-zinc-600 mt-2">Usually auto-filled from your Brain — leave blank to let the Brain drive.</div>
+          </details>
         </Card>
       )}
 
@@ -513,12 +516,8 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
               <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars and set each one's format + channels.</p>
             </div>
             <div className="text-right shrink-0">
-              <label className="text-[11px] text-zinc-400 block mb-1">Cadence — how often the machine fires</label>
-              <select value={cfg.cadence} onChange={(e) => u({ cadence: e.target.value })} className="bg-zinc-800 rounded-lg text-sm px-3 py-2">
-                <option value="chill">Chill · 3× / week</option>
-                <option value="steady">Steady · daily</option>
-                <option value="machinegun">Machine gun · multi-daily</option>
-              </select>
+              <div className="text-[11px] text-zinc-400 mb-1">Schedule</div>
+              <div className="text-xs text-zinc-300 bg-zinc-800/60 rounded-lg px-3 py-2">1 pillar / day · Mon–Sun · 8am ET</div>
             </div>
           </div>
 
