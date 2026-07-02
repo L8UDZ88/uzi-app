@@ -449,40 +449,27 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
 
       {step === 3 && (() => {
         const s = cfg.inputs?.story || {};
-        const core = HERO_FRAME_FIELDS.filter((f) => f.core);
-        const extra = HERO_FRAME_FIELDS.filter((f) => !f.core);
         return (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Your campaign Story</h3>
-          <p className="text-zinc-400 text-sm mt-1">This is the Hero Frame your whole calendar tells over time — the one story every post advances. The AI drafts it from your brand kit + connected Drive folder; you review and edit. It feeds every post.</p>
+          <h3 className="text-xl font-bold">Your campaign Story — the Hero Frame</h3>
+          <p className="text-zinc-400 text-sm mt-1">The one story every post advances, told in the Hero Frame's stages. AI drafts it from your brand + Brain; review and edit. ★ = load-bearing.</p>
 
           <div className="flex gap-2 mt-4">
             <Btn className="flex-1" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft my story with AI ✨"}</Btn>
             <Btn kind="ghost" onClick={clearStory}>Clear</Btn>
           </div>
-          <div className="text-[11px] text-zinc-600 mt-1">Pulls from your brand kit + connected Drive folder (your "master brain"). Review and edit anything. ★ = the 5 load-bearing inputs.</div>
 
-          <div className="mt-4 space-y-2">
-            <div className="text-xs font-semibold text-accent">The essentials ★</div>
-            {core.map((f) => (
-              <div key={f.id}>
-                <label className="text-[11px] text-zinc-400">{f.name} ★ — <span className="text-zinc-600">{f.hint}</span></label>
-                <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
+          {/* Hero Frame as an ordered narrative — the framework's own structure, stage by stage */}
+          <div className="mt-5 border-l-2 border-zinc-800 pl-5 space-y-4">
+            {HERO_FRAME_FIELDS.map((f, i) => (
+              <div key={f.id} className="relative">
+                <span className={`absolute -left-[26px] top-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${f.core ? "bg-accent text-zinc-950" : "bg-zinc-700 text-zinc-300"}`}>{i + 1}</span>
+                <label className="text-xs font-semibold text-zinc-200">{f.name}{f.core ? " ★" : ""}</label>
+                <div className="text-[11px] text-zinc-600 mb-1">{f.hint}</div>
+                <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm" />
               </div>
             ))}
           </div>
-
-          <details open className="mt-4">
-            <summary className="text-sm font-semibold cursor-pointer select-none">Supporting inputs · {extra.length}</summary>
-            <div className="mt-2 space-y-2">
-              {extra.map((f) => (
-                <div key={f.id}>
-                  <label className="text-[11px] text-zinc-500">{f.name} — <span className="text-zinc-600">{f.hint}</span></label>
-                  <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm mt-0.5" />
-                </div>
-              ))}
-            </div>
-          </details>
         </Card>
         );
       })()}

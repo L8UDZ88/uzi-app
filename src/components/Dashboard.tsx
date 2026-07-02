@@ -127,7 +127,7 @@ async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any>
   }
 }
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null; beat?: string | null; beatName?: string | null; phase?: string | null; loop?: number | null; caption?: string | null; mediaUrl?: string | null; time?: string | null };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null; beat?: string | null; beatName?: string | null; phase?: string | null; loop?: number | null; caption?: string | null; mediaUrl?: string | null; time?: string | null; groupIds?: string[] };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string; script?: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -187,6 +187,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoMsg, setAutoMsg] = useState("");
   const [approveBusy, setApproveBusy] = useState(false);
+  const [stillsBusy, setStillsBusy] = useState(false);
+  const [stillsMsg, setStillsMsg] = useState("");
   const [preview, setPreview] = useState<Slot | null>(null); // Deliver: enlarged final-review preview
   const isVideoUrl = (u?: string | null) => !!u && !u.startsWith("data:image") && /(mp4|\.mov|shotstack|\/render)/i.test(u);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
@@ -251,6 +253,14 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     setSlots(slots.filter((s) => !selected.has(s.id)));
     setSelected(new Set());
   };
+  // Group actions: a pillar fires once/day to N channels — treat those N as one reviewable group.
+  const toggleGroup = (ids: string[]) => setSelected((s) => { const n = new Set(s); const all = ids.every((id) => n.has(id)); ids.forEach((id) => (all ? n.delete(id) : n.add(id))); return n; });
+  const delGroup = async (ids: string[]) => {
+    await fetch("/api/schedule/delete-many", { method: "POST", body: JSON.stringify({ campaignId, ids }) });
+    setSlots(slots.filter((s) => !ids.includes(s.id)));
+    setSelected((s) => { const n = new Set(s); ids.forEach((id) => n.delete(id)); return n; });
+  };
+  const openGroup = (g: any) => openSlot({ ...g.items[0], groupIds: g.items.map((x: any) => x.id) });
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST" }); r.push("/"); };
 
   const openSlot = async (s: Slot) => {
@@ -260,6 +270,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     if (pillarSource(s.pillar) === "real") loadMedia();
     if (isLongform(s)) { setSpliceOpen(true); setSpliceKind("video"); loadSplice("video"); } // long-form uses your uploaded video
     if (aspectFor(s.channel, s.format) === "audio") { setSpliceOpen(true); setSpliceKind("audio"); loadSplice("audio"); } // Spotify/Podcast → audio library
+    loadItalian(); // populate Italian voices into the VO dropdown
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city, beat: s.beat, loop: s.loop }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -561,6 +572,23 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       else alert(d.error || "Couldn't approve — try again.");
     } catch { alert("Couldn't approve — try again."); } finally { setApproveBusy(false); }
   };
+  // Batch stills: render a scene image for every approved post that has no visual yet. Resumable.
+  const runStills = async () => {
+    setStillsBusy(true); setStillsMsg("Starting…");
+    try {
+      for (let i = 0; i < 400; i++) {
+        const d = await postJSON("/api/batch/stills", { campaignId }, 120000);
+        if (d.error) { alert(d.error); break; }
+        const made = (d.total || 0) - (d.remaining || 0);
+        setStillsMsg(`Rendered ${made}/${d.total || 0}…`);
+        if (d.done) {
+          setStillsMsg(`✓ Stills done (${d.total || 0}).`);
+          try { const r2 = await (await fetch(`/api/campaigns/${campaignId}/schedule`)).json(); if (Array.isArray(r2.slots)) setSlots(r2.slots); } catch { /* ignore */ }
+          break;
+        }
+      }
+    } catch { alert("Stills batch hit a snag — try again."); } finally { setStillsBusy(false); }
+  };
   const loadTrailer = async () => {
     try { const d = await (await fetch(`/api/trailer/get?campaignId=${campaignId}`)).json(); if (d.job) setTrailer(d.job); } catch { /* ignore */ }
   };
@@ -617,8 +645,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     const cap = [draft.caption, (draft.hashtags || []).join(" ")].filter(Boolean).join("\n\n");
     // Assembled post = the finished media (spliced clip / rendered video wins over a still) + aligned caption.
     const media = videoUrl || image;
-    await fetch("/api/approve", { method: "POST", body: JSON.stringify({ id: open.id, status: "approved", caption: cap, mediaUrl: media }) });
-    setSlots(slots.map((s) => (s.id === open.id ? { ...s, status: "approved" } : s)));
+    // One edit → every channel in the group gets the same finished asset + caption.
+    const ids = open.groupIds && open.groupIds.length ? open.groupIds : [open.id];
+    await Promise.all(ids.map((id) => fetch("/api/approve", { method: "POST", body: JSON.stringify({ id, status: "approved", caption: cap, mediaUrl: media }) })));
+    setSlots(slots.map((s) => (ids.includes(s.id) ? { ...s, status: "approved" } : s)));
     setOpen(null);
   };
   const statusStyle = (s: string) =>
@@ -655,11 +685,259 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Schedule</div><div className="text-xl font-bold mt-1">1 / day</div><div className="text-[11px] text-zinc-500">Mon–Sun · 8am ET</div></Card>
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {["offer", "brain", "profile", "story", "pillars", "trailer", "calendar", "deliver"].map((t) => (
+        <div className="flex gap-2 mb-4 flex-wrap items-center">
+          {["offer", "brain", "profile", "story", "pillars", "calendar", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
+          <button key="trailer" onClick={() => setTab("trailer")} className={`ml-auto px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === "trailer" ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>🎬 Trailer</button>
         </div>
+
+        {/* Top viewer — horizontal editor docked above the calendar; click a post below to toggle it here */}
+        {tab === "calendar" && open && (
+          <Card className="p-4 mb-4 max-h-[66vh] overflow-auto border-lime-400/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
+                <div className="font-bold text-lg">{open.city ? open.pillar.replace(/\[city\]/i, open.city) : open.pillar}</div>
+                {open.beatName && <div className="mt-1"><span className={`text-[10px] rounded-full px-2 py-0.5 ${phaseStyle(open.phase)}`}>{open.phase} · {open.beatName}{typeof open.loop === "number" ? ` · loop ${open.loop + 1}` : ""}</span></div>}
+                {open.beat && (() => { const jb = arcFor(campaign.campaignType).find((b) => b.id === open.beat)?.job; return jb ? <div className="text-[11px] text-zinc-500 mt-1">Story job: {jb}</div> : null; })()}
+              </div>
+              <button onClick={() => setOpen(null)} className="text-zinc-500 hover:text-zinc-200 text-xl" title="Close viewer">✕</button>
+            </div>
+            {draftLoading && <div className="text-zinc-500 mt-8">Drafting…</div>}
+            {draft && (
+              <div className="mt-5 grid lg:grid-cols-2 gap-5 items-start">
+                {/* LEFT — live preview */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-zinc-500">Preview · how it'll post <span className="text-zinc-600">· 🔒 Voice: {isGrowFastBrand(campaign.name) ? "GrowFast (Tyson)" : (campaign.name || "brand")}</span></div>
+                    <span className={`text-[10px] rounded-full px-2 py-0.5 ${usedAI ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{usedAI ? "✨ AI copy" : "Template copy"}</span>
+                  </div>
+                  <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} productUrl={productUrl} />
+                  {productList.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-zinc-500">Product:</span>
+                      <button onClick={() => setProductSel(null)} className={`text-xs rounded-lg px-2 py-1 border ${!productSel ? "border-lime-400 text-accent" : "border-zinc-700 text-zinc-400"}`}>None</button>
+                      {productList.map((p) => (
+                        <button key={p.id} onClick={() => setProductSel(p.id)} className={`w-9 h-9 rounded-lg border overflow-hidden ${productSel === p.id ? "border-lime-400" : "border-zinc-700"}`} title={p.name}>
+                          <img src={`/api/product/${p.id}`} alt="" className="w-full h-full object-contain" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {productList.length === 0 && <div className="text-[11px] text-zinc-600">Tip: upload your product (transparent PNG) in Edit setup → Inputs to render it into shots. Logos auto-infuse.</div>}
+                  {productSel && (
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">Scene:</span>
+                        <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+                          <button onClick={() => setSceneStyle("hero")} className={`text-xs px-3 py-1.5 ${sceneStyle === "hero" ? "bg-lime-400 text-zinc-950 font-semibold" : "text-zinc-400"}`}>Hero · perfect label</button>
+                          <button onClick={() => setSceneStyle("lifestyle")} className={`text-xs px-3 py-1.5 ${sceneStyle === "lifestyle" ? "bg-lime-400 text-zinc-950 font-semibold" : "text-zinc-400"}`}>Lifestyle · in-hand</button>
+                        </div>
+                      </div>
+                      <div className="text-[11px] text-zinc-600 mt-1">
+                        {sceneStyle === "hero"
+                          ? "Your real can integrated as a clean hero shot — matched lighting, label kept intact."
+                          : "Your real can placed into a people/usage moment — hands holding it, matched lighting, label kept."}
+                      </div>
+                    </div>
+                  )}
+                  {(() => {
+                    const r = routePost({ format: open.format, channel: open.channel, pillarSource: pillarSource(open.pillar) });
+                    const ready = routeReady(r, (campaign.inputs || {}).libraries);
+                    return (
+                      <div className={`text-[11px] rounded-lg px-3 py-2 flex items-center gap-2 ${ready ? "bg-zinc-800/50 text-zinc-400" : "bg-red-500/10 text-red-300 border border-red-500/40"}`}>
+                        <span>🎯 Auto-source:</span>
+                        <span className="text-zinc-200">{r.label}</span>
+                        {!ready && <span className="ml-auto">Connect your {r.needs} library in Brain →</span>}
+                      </div>
+                    );
+                  })()}
+                </div>
+                {/* RIGHT — generation controls */}
+                <div className="space-y-4">
+                {/* 1 · Visual — hidden for audio-only posts (Spotify/Podcast use the audio library below) */}
+                {aspectFor(open.channel, open.format) !== "audio" && (isLongform(open) ? (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-3">
+                    <div className="text-sm font-semibold text-zinc-200">🎥 Long-form uses your uploaded video</div>
+                    <div className="text-xs text-zinc-500 mt-1">No AI generation — pick your webcam / screen-share clip from the Video library below and trim it. It exports as the YouTube long-form (and a Spotify audio track).</div>
+                  </div>
+                ) : pillarSource(open.pillar) === "real" ? (
+                  <div>
+                    <div className="text-xs text-zinc-500 mb-1">1 · Your photos & footage — pick one from your connected folder (no AI)</div>
+                    {mediaLoading && <div className="text-xs text-zinc-500">Loading your media…</div>}
+                    {!mediaLoading && driveMedia.length === 0 && <div className="text-xs text-zinc-500">No photos/footage found. Connect a Drive folder in Edit setup → Inputs, or add media to it.</div>}
+                    {driveMedia.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 max-h-72 overflow-auto">
+                        {driveMedia.map((m) => {
+                          const sel = m.kind === "video" && realClip ? realClip.includes(m.id) : false;
+                          return (
+                            <button key={m.id} onClick={() => pickMedia(m)} className={`relative block rounded-lg overflow-hidden border ${sel ? "border-lime-400" : "border-zinc-800"} bg-zinc-900`}>
+                              {m.thumbnailLink ? <img src={m.thumbnailLink} alt="" className="w-full h-20 object-cover" /> : <div className="w-full h-20 flex items-center justify-center text-zinc-600 text-xs">{m.kind}</div>}
+                              {m.kind === "video" && <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">▶</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {realClip && <video src={realClip} controls className="w-full rounded-xl bg-black mt-2" />}
+                    <div className="text-[11px] text-zinc-600 mt-1">Real media — no AI generation. Uzi adds the copy, voiceover, and score.</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs text-zinc-500 mb-1">1 · Image prompt — edit to adjust the scene, then generate</div>
+                    <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
+                    <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
+                  </div>
+                ))}
+
+                {/* Splice from your libraries. Audio-aspect posts (Spotify/Podcast) show only the audio picker. */}
+                {aspectFor(open.channel, open.format) !== "text" && (
+                  <div className="border-t border-zinc-800 pt-3">
+                    <div className="flex items-center gap-3">
+                      {aspectFor(open.channel, open.format) !== "audio" && (
+                        <button onClick={() => openSplice("video")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "video" ? "text-lime-300" : "text-zinc-400"}`}>✂️ Splice from video library</button>
+                      )}
+                      <button onClick={() => openSplice("audio")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "audio" ? "text-lime-300" : "text-zinc-400"}`}>🎧 {aspectFor(open.channel, open.format) === "audio" ? "Pick from audio library" : "Audiogram from audio library"}</button>
+                    </div>
+                    {spliceOpen && (
+                      <div className="mt-2 space-y-2">
+                        {spliceLoading && <div className="text-xs text-zinc-500">Loading your {spliceKind} library…</div>}
+                        {!spliceLoading && spliceMedia.length === 0 && <div className="text-xs text-zinc-500">No {spliceKind} files found. Connect a {spliceKind === "audio" ? "Audio" : "Video"} library folder in Edit setup → Inputs.</div>}
+                        {spliceMedia.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2 max-h-44 overflow-auto">
+                            {spliceMedia.map((m) => (
+                              <button key={m.id} onClick={() => pickSplice(m)} className={`relative block rounded-lg overflow-hidden border ${spliceFile?.id === m.id ? "border-lime-400" : "border-zinc-800"} bg-zinc-900`}>
+                                {m.thumbnailLink ? <img src={m.thumbnailLink} alt="" className="w-full h-16 object-cover" /> : <div className="w-full h-16 flex items-center justify-center text-zinc-600 text-[10px] px-1 text-center">{m.name}</div>}
+                                <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">{spliceKind === "audio" ? "🎧" : "▶"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {spliceBusy && <div className="text-xs text-accent">{spliceBusy}</div>}
+                        {splicePlan && (
+                          <div className="bg-zinc-800/40 rounded-lg p-3 space-y-2">
+                            <div className="text-[11px] text-zinc-400">{splicePlan.source === "ai" ? "AI-picked moment" : "Auto-picked moment"}{splicePlan.why ? ` — ${splicePlan.why}` : ""}</div>
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <label className="text-zinc-500">In</label>
+                              <input type="number" step="0.1" value={splicePlan.start} onChange={(e) => setSplicePlan({ ...splicePlan, start: Math.max(0, Number(e.target.value) || 0) })} className="w-20 bg-zinc-800 rounded px-2 py-1" />
+                              <label className="text-zinc-500">Out</label>
+                              <input type="number" step="0.1" value={splicePlan.end} onChange={(e) => setSplicePlan({ ...splicePlan, end: Number(e.target.value) || 0 })} className="w-20 bg-zinc-800 rounded px-2 py-1" />
+                              <span className="text-zinc-600">/ {Math.round(splicePlan.total || 0)}s · clip {Math.max(0, (splicePlan.end || 0) - (splicePlan.start || 0)).toFixed(1)}s</span>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={spliceCaps} onChange={(e) => setSpliceCaps(e.target.checked)} /> Burn in captions</label>
+                            <Btn kind="ghost" className="w-full text-sm" disabled={videoBusy} onClick={makeSplice}>{videoBusy ? (videoStatus || "Working…") : (spliceKind === "audio" ? "Make audiogram 🎧" : "Make clip ✂️")}</Btn>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (<>
+                {/* 2 · Voiceover decision */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <div className="text-xs text-zinc-500 mb-1">2 · Voiceover — generate it or turn it off</div>
+                  {noVo ? (
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-zinc-400">🔇 No voiceover</span>
+                      <button className="text-accent text-xs" onClick={() => setNoVo(false)}>Add voiceover</button>
+                    </div>
+                  ) : (<>
+                    <textarea value={editScript} onChange={(e) => setEditScript(e.target.value)} rows={2} placeholder={'Voiceover script — edit so it reads cleanly (e.g. "one million ARR", not "$1M ARR")'} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                    <div className="flex items-center gap-2 mt-2">
+                      <select value={voVoice} onChange={(e) => { const val = e.target.value; const it = itVoices.find((x: any) => x.voiceId === val); if (it) addVoice(it); else setVoVoice(val); }} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[38%] truncate" title="Voice">
+                        {(voices.length ? voices : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => ({ id: v, name: v }))).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                        {itVoices.length > 0 && <optgroup label="🇮🇹 Italian voices">{itVoices.map((v: any) => <option key={v.voiceId} value={v.voiceId}>{v.name}</option>)}</optgroup>}
+                      </select>
+                      <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating…" : vo ? "Regenerate 🎙" : "Generate voiceover 🎙"}</Btn>
+                      <Btn kind="ghost" className="text-sm" onClick={() => { setNoVo(true); setVo(null); }}>No VO</Btn>
+                    </div>
+                  </>)}
+                  {vo && !noVo && <audio controls src={vo} className="w-full mt-2" />}
+                </div>
+
+                {/* 3 · Music decision */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <div className="text-xs text-zinc-500 mb-1">3 · Music score — generate it or turn it off</div>
+                  {noMusic ? (
+                    <div className="flex items-center justify-between bg-zinc-800/40 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-zinc-400">🔇 No music</span>
+                      <button className="text-accent text-xs" onClick={() => setNoMusic(false)}>Add music</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input value={editMusic} onChange={(e) => setEditMusic(e.target.value)} placeholder="Genre · mood · energy — e.g. 'uplifting corporate synth, medium energy, hopeful'" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                      <div className="flex items-center gap-2">
+                        <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
+                        <Btn kind="ghost" className="text-sm" onClick={() => { setNoMusic(true); setMusic(null); }}>No music</Btn>
+                      </div>
+                    </div>
+                  )}
+                  {music && !noMusic && <audio controls src={music} className="w-full mt-2" />}
+                </div>
+
+                {/* 4 · Video — locked until image + both audio decisions are made */}
+                {(() => {
+                  const base = image || picked || realClip;
+                  const need = [!base ? "pick or generate the visual" : "", !(vo || noVo) ? "decide on voiceover" : "", !(music || noMusic) ? "decide on music" : ""].filter(Boolean);
+                  const ready = need.length === 0;
+                  return (
+                    <div className="border-t border-zinc-800 pt-3">
+                      <Btn className="w-full" disabled={!ready || videoBusy} onClick={genVideo}>{videoBusy ? `Working… ${videoStatus}` : videoUrl ? "Re-make video 🎬" : "Make video 🎬"}</Btn>
+                      <div className="text-[11px] text-zinc-600 mt-1">{ready ? "Packages your image + voiceover + music — sized to the real audio length." : `Finish first: ${need.join(" · ")}.`}</div>
+                    </div>
+                  );
+                })()}
+                {videoUrl && (
+                  <div className="space-y-1">
+                    <video controls src={videoUrl} className="w-full rounded-xl bg-black" />
+                    <a href={videoUrl} target="_blank" rel="noreferrer" className="text-xs text-accent underline">Open / download MP4 ↗</a>
+                  </div>
+                )}
+                <details className="text-sm">
+                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Optional: use a stock clip instead of the still 🎞</summary>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input value={stockQ} onChange={(e) => setStockQ(e.target.value)} placeholder="Search clips…" className="flex-1 bg-zinc-800 rounded-lg px-3 py-2 text-sm" />
+                      <Btn kind="ghost" className="text-sm" disabled={stockBusy} onClick={genStock}>{stockBusy ? "Searching…" : "Find"}</Btn>
+                    </div>
+                    {clips.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 max-h-56 overflow-auto">
+                        {clips.map((c) => (
+                          <a key={c.id} href={c.download} target="_blank" rel="noreferrer" onClick={() => setPicked(c.id)} className={`relative block rounded-lg overflow-hidden border ${picked === c.id ? "border-lime-400" : "border-zinc-800"}`}>
+                            <img src={c.thumb} alt="" className="w-full h-20 object-cover" />
+                            <span className="absolute bottom-1 right-1 text-[10px] bg-black/70 text-white rounded px-1">{Math.round(c.duration)}s</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-zinc-600">Click a clip to preview. Picked clips replace the still as the video base. Pexels — free, commercial-use.</div>
+                  </div>
+                </details>
+                </>)}
+                <details className="text-sm">
+                  <summary className="text-xs text-zinc-500 cursor-pointer select-none">Details (headline · visual brief · CTA)</summary>
+                  <div className="mt-3 space-y-3">
+                    <Card className="p-3"><div className="text-xs text-zinc-500 mb-1">Headline</div><div className="font-semibold text-zinc-100">{draft.headline}</div></Card>
+                    <Card className="p-3">
+                      <div className="text-xs text-zinc-500 mb-1">Visual brief — edit this, then “Generate visual / video” uses your version</div>
+                      <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={3} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                    </Card>
+                    <div className="text-xs text-zinc-500">CTA: {draft.cta}</div>
+                  </div>
+                </details>
+                {image && <Btn kind="ghost" className="w-full text-sm" onClick={exportStill}>Export image (PNG) ⬇</Btn>}
+                <div className="flex gap-2 pt-2">
+                  <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
+                  <Btn onClick={approve} className="flex-1">{open.groupIds && open.groupIds.length > 1 ? `Approve → ${open.groupIds.length} channels ✓` : "Approve ✓"}</Btn>
+                </div>
+                <div className="text-xs text-zinc-600">{image ? "Your real product is rendered into the scene. Edit the brief above and regenerate to change it, or pick a different product." : "Pick a product, then “Generate visual” renders a scene built around your real product (needs the OpenAI image key)."}</div>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
 
         {["offer", "brain", "profile", "story", "pillars"].includes(tab) && (
           <Wizard
@@ -685,6 +963,33 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
                 </div>
               </div>
+              {/* Batch pipeline — runs on APPROVED posts. Each stage lights the next. */}
+              {(() => {
+                const approved = slots.filter((s) => s.status === "approved").length;
+                const needStills = slots.filter((s) => s.status === "approved" && !s.mediaUrl).length;
+                const haveStills = approved > 0 && needStills === 0;
+                const Step = ({ label, on, busy, done, onClick, note }: any) => (
+                  <button onClick={onClick} disabled={!on || busy} title={note}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold border transition ${busy ? "bg-accent/70 text-zinc-950 border-transparent" : done ? "bg-lime-400/20 text-accent border-lime-400/40" : on ? "bg-accent text-zinc-950 border-transparent hover:brightness-95" : "bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed"}`}>
+                    {label}
+                  </button>
+                );
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap bg-zinc-900/60 rounded-lg px-2.5 py-2">
+                    <span className="text-[11px] text-zinc-500 mr-1">Batch pipeline · approved posts:</span>
+                    <Step label={stillsBusy ? (stillsMsg || "Rendering…") : haveStills ? "✓ Stills" : `🖼 Generate all stills${needStills ? ` (${needStills})` : ""}`} on={approved > 0} busy={stillsBusy} done={haveStills} onClick={runStills} note="Renders a scene image for every approved post that has no visual." />
+                    <span className="text-zinc-700">→</span>
+                    <Step label="🎞 Animate stills" on={false} note="Next build — turns stills into motion clips (Kling)." />
+                    <span className="text-zinc-700">→</span>
+                    <Step label="🎙 Generate VO" on={false} note="Next build — voiceover per approved post." />
+                    <span className="text-zinc-700">→</span>
+                    <Step label="🎵 Generate music" on={false} note="Next build — score per approved post." />
+                    <span className="text-zinc-700">→</span>
+                    <Step label="🎬 Master Video" on={false} note="Next build — assembles still + motion + VO + music into the final MP4." />
+                    {!stillsBusy && stillsMsg && <span className="text-[11px] text-accent ml-1">{stillsMsg}</span>}
+                  </div>
+                );
+              })()}
               <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-zinc-500 bg-zinc-900/60 rounded-lg px-2.5 py-1.5">
                 <button onClick={() => setTab("pillars")} className="text-zinc-300 hover:text-accent underline">Pillars</button>
                 <span className="text-zinc-600">set formats + channels</span>
@@ -709,34 +1014,48 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
-              {slots.map((e, i) => {
-              const prev = slots[i - 1];
-              const newDay = i === 0 || (prev && prev.date !== e.date);
-              const dayCount = newDay ? slots.filter((s) => s.date === e.date).length : 0;
-              return (
-              <Fragment key={e.id}>
-                {newDay && (
-                  <div className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur px-2 py-1.5 flex items-center justify-between text-[11px] font-semibold">
-                    <span className="text-zinc-300">{e.day} · {e.date.slice(5)}{e.time ? <span className="text-zinc-500 font-normal"> · {e.time}</span> : null}</span>
-                    <span className="text-accent">{dayCount} post{dayCount === 1 ? "" : "s"}</span>
-                  </div>
-                )}
-                <div className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
-                  <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSel(e.id)} className="shrink-0" />
-                  <button onClick={() => openSlot(e)} className="flex-1 flex items-center gap-3 text-left min-w-0">
-                    <div className="w-24 text-zinc-500 shrink-0"><div>{e.day} {e.date.slice(5)}</div>{e.time && <div className="text-[10px] text-zinc-600">{e.time}</div>}</div>
-                    <div className="w-8 text-center text-accent shrink-0">{e.glyph}</div>
-                    <div className="w-28 text-zinc-300 truncate shrink-0">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
-                    <div className="flex-1 text-zinc-100 truncate">{e.city ? e.pillar.replace(/\[city\]/i, e.city) : e.pillar}</div>
-                  </button>
-                  {e.beatName && <span className={`hidden md:inline text-[10px] rounded-full px-2 py-0.5 shrink-0 ${phaseStyle(e.phase)}`} title={`${e.phase} · ${e.beatName}${typeof e.loop === "number" ? ` · loop ${e.loop + 1}` : ""}`}>{e.beatName}</span>}
-                  <span className={`text-xs rounded-full px-2 py-0.5 shrink-0 ${statusStyle(e.status)}`}>{e.status}</span>
-                  <button onClick={(ev) => delPost(e.id, ev)} className="text-zinc-600 hover:text-red-400 px-1.5 shrink-0" title="Delete post">✕</button>
-                </div>
-              </Fragment>
-              );
-              })}
-              {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
+              {(() => {
+                // One row per pillar-firing (a pillar hits N channels the same day/time) — review once.
+                const groups: any[] = [];
+                const gmap = new Map<string, any>();
+                for (const s of slots) {
+                  const key = `${s.date}|${s.time || ""}|${s.pillar}|${s.beat || ""}`;
+                  let g = gmap.get(key);
+                  if (!g) { g = { key, date: s.date, day: s.day, time: s.time, pillar: s.pillar, city: s.city, beatName: s.beatName, phase: s.phase, items: [] }; gmap.set(key, g); groups.push(g); }
+                  g.items.push(s);
+                }
+                const done = ["approved", "ready", "published"];
+                return groups.map((g, i) => {
+                  const prev = groups[i - 1];
+                  const newDay = i === 0 || (prev && prev.date !== g.date);
+                  const dayCount = newDay ? slots.filter((s) => s.date === g.date).length : 0;
+                  const ids: string[] = g.items.map((x: any) => x.id);
+                  const allSel = ids.every((id) => selected.has(id));
+                  const gStatus = g.items.every((x: any) => done.includes(x.status)) ? "approved" : g.items.some((x: any) => x.status === "drafted") ? "drafted" : g.items[0].status;
+                  return (
+                  <Fragment key={g.key}>
+                    {newDay && (
+                      <div className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur px-2 py-1.5 flex items-center justify-between text-[11px] font-semibold">
+                        <span className="text-zinc-300">{g.day} · {g.date.slice(5)}{g.time ? <span className="text-zinc-500 font-normal"> · {g.time}</span> : null}</span>
+                        <span className="text-accent">{dayCount} post{dayCount === 1 ? "" : "s"}</span>
+                      </div>
+                    )}
+                    <div className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
+                      <input type="checkbox" checked={allSel} onChange={() => toggleGroup(ids)} className="shrink-0" />
+                      <button onClick={() => openGroup(g)} className="flex-1 flex items-center gap-3 text-left min-w-0">
+                        <div className="w-24 text-zinc-500 shrink-0"><div>{g.day} {g.date.slice(5)}</div>{g.time && <div className="text-[10px] text-zinc-600">{g.time}</div>}</div>
+                        <div className="flex items-center gap-1 w-28 shrink-0 text-accent">{g.items.map((x: any) => <span key={x.id} title={x.channel}>{x.glyph}</span>)}<span className="text-zinc-600 text-[10px] ml-0.5">·{g.items.length}</span></div>
+                        <div className="flex-1 text-zinc-100 truncate">{g.city ? g.pillar.replace(/\[city\]/i, g.city) : g.pillar}</div>
+                      </button>
+                      {g.beatName && <span className={`hidden md:inline text-[10px] rounded-full px-2 py-0.5 shrink-0 ${phaseStyle(g.phase)}`}>{g.beatName}</span>}
+                      <span className={`text-xs rounded-full px-2 py-0.5 shrink-0 ${statusStyle(gStatus)}`}>{gStatus}</span>
+                      <button onClick={() => { if (confirm(`Delete all ${ids.length} posts for “${g.pillar}” on ${g.date.slice(5)}?`)) delGroup(ids); }} className="text-zinc-600 hover:text-red-400 px-1.5 shrink-0" title="Delete">✕</button>
+                    </div>
+                  </Fragment>
+                  );
+                });
+              })()}
+              {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Build calendar.</div>}
             </div>
           </Card>
         )}
@@ -856,9 +1175,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         )}
       </div>
 
-      {open && (
-        <div className="fixed inset-0 bg-black/60 flex justify-end z-50" onClick={() => setOpen(null)}>
-          <div className="bg-zinc-950 border-l border-zinc-800 w-full max-w-lg h-full overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
+      {/* legacy overlay editor — superseded by the inline top viewer above */}
+      {false && open && (
+        <div className="fixed inset-0 bg-black/70 flex justify-center items-start p-4 z-50 overflow-auto" onClick={() => setOpen(null)}>
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs text-zinc-500">{open.day} {open.date} · {open.channel || "—"}{open.format ? ` · ${open.format}` : ""}</div>
@@ -1007,29 +1327,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   ) : (<>
                     <textarea value={editScript} onChange={(e) => setEditScript(e.target.value)} rows={2} placeholder={'Voiceover script — edit so it reads cleanly (e.g. "one million ARR", not "$1M ARR")'} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
                     <div className="flex items-center gap-2 mt-2">
-                      <select value={voVoice} onChange={(e) => setVoVoice(e.target.value)} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[38%] truncate" title="Voice">
+                      <select value={voVoice} onChange={(e) => { const val = e.target.value; const it = itVoices.find((x: any) => x.voiceId === val); if (it) addVoice(it); else setVoVoice(val); }} className="bg-zinc-800 rounded-lg text-xs px-2 py-2 max-w-[38%] truncate" title="Voice">
                         {(voices.length ? voices : ["alloy", "echo", "fable", "onyx", "nova", "shimmer"].map((v) => ({ id: v, name: v }))).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                        {itVoices.length > 0 && <optgroup label="🇮🇹 Italian voices">{itVoices.map((v: any) => <option key={v.voiceId} value={v.voiceId}>{v.name}</option>)}</optgroup>}
                       </select>
                       <Btn kind="ghost" className="flex-1 text-sm" disabled={voBusy} onClick={genVoice}>{voBusy ? "Generating…" : vo ? "Regenerate 🎙" : "Generate voiceover 🎙"}</Btn>
                       <Btn kind="ghost" className="text-sm" onClick={() => { setNoVo(true); setVo(null); }}>No VO</Btn>
                     </div>
-                    <details className="mt-2" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) loadItalian(); }}>
-                      <summary className="text-xs text-accent cursor-pointer select-none">🇮🇹 Browse Italian voices to try</summary>
-                      <div className="mt-2 space-y-1.5 max-h-72 overflow-auto pr-1">
-                        {itLoading && <div className="text-xs text-zinc-500">Loading Italian voices…</div>}
-                        {!itLoading && itVoices.length === 0 && <div className="text-xs text-zinc-500">No Italian library voices found (needs an ElevenLabs key).</div>}
-                        {itVoices.map((v) => (
-                          <div key={v.voiceId} className="flex items-center gap-2 bg-zinc-800/50 rounded-lg px-2 py-1.5">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium truncate">{v.name}</div>
-                              <div className="text-[10px] text-zinc-500 truncate">{[v.gender, v.accent, v.age, v.description].filter(Boolean).join(" · ")}</div>
-                            </div>
-                            {v.previewUrl && <audio controls preload="none" src={v.previewUrl} className="h-7 w-36" />}
-                            <Btn kind="ghost" className="text-xs" disabled={addingVoice === v.voiceId} onClick={() => addVoice(v)}>{addingVoice === v.voiceId ? "Adding…" : "Use"}</Btn>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
                   </>)}
                   {vo && !noVo && <audio controls src={vo} className="w-full mt-2" />}
                 </div>
@@ -1107,7 +1411,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 {image && <Btn kind="ghost" className="w-full text-sm" onClick={exportStill}>Export image (PNG) ⬇</Btn>}
                 <div className="flex gap-2 pt-2">
                   <Btn kind="ghost" onClick={() => openSlot(open)}>Regenerate</Btn>
-                  <Btn onClick={approve} className="flex-1">Approve ✓</Btn>
+                  <Btn onClick={approve} className="flex-1">{open.groupIds && open.groupIds.length > 1 ? `Approve → ${open.groupIds.length} channels ✓` : "Approve ✓"}</Btn>
                 </div>
                 <div className="text-xs text-zinc-600">{image ? "Your real product is rendered into the scene. Edit the brief above and regenerate to change it, or pick a different product." : "Pick a product, then “Generate visual” renders a scene built around your real product (needs the OpenAI image key)."}</div>
               </div>
