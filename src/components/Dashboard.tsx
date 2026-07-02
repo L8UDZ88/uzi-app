@@ -1176,7 +1176,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       </div>
 
       {/* legacy overlay editor — superseded by the inline top viewer above */}
-      {false && open && (
+      {open && false && (
         <div className="fixed inset-0 bg-black/70 flex justify-center items-start p-4 z-50 overflow-auto" onClick={() => setOpen(null)}>
           <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-auto p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
