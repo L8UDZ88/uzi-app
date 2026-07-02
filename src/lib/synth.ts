@@ -1,11 +1,14 @@
 // Native, source-grounded synthesis (the "NotebookLM step", done in-house with Claude).
 // Distills the brand's raw source material (documents + transcripts + brain folder) into a tight,
 // reusable content brain that grounds all future copy. Falls back to the raw text if unavailable.
+import { voiceSystemPrompt } from "./voice";
+
 export async function synthesizeBrain(raw: string, brandName: string): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY;
   const trimmed = (raw || "").trim();
   if (!key || !trimmed) return trimmed.slice(0, 12000);
-  const system = `You are a brand strategist. Distill the raw source material into a tight, reusable "content brain" that will ground all future social copy for ${brandName || "the brand"}. Use ONLY what's in the sources — never invent facts.`;
+  const system = voiceSystemPrompt({ name: brandName }) + "\n\n" +
+    `You are a brand strategist. Distill the raw source material into a tight, reusable "content brain" that will ground all future social copy for ${brandName || "the brand"}. Use ONLY what's in the sources — never invent facts.`;
   const user =
     `Raw source material (documents, transcripts, notes):\n<sources>\n${trimmed.slice(0, 24000)}\n</sources>\n\n` +
     `Produce a concise structured brief with these sections (bullet points, factual):\n` +

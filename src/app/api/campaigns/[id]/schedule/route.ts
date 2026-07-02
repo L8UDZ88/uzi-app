@@ -10,11 +10,13 @@ async function slotsFor(brandId: string) {
   return items.map((s) => ({
     id: s.id,
     date: s.date.toISOString().slice(0, 10),
-    day: s.date.toLocaleDateString(undefined, { weekday: "short" }),
+    day: s.date.toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short" }),
+    time: s.date.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + " ET",
     pillar: s.pillar, channel: s.channel, format: (s as any).format || "",
     glyph: GLYPH[s.channel] || "·",
     status: s.status, city: (s as any).city || null, externalUrl: (s as any).externalUrl || null,
     beat: (s as any).beat || null, beatName: (s as any).beatName || null, phase: (s as any).phase || null, loop: (s as any).loop ?? null,
+    caption: (s as any).caption || null, mediaUrl: (s as any).mediaUrl || null,
   }));
 }
 

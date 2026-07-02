@@ -58,14 +58,8 @@ export async function POST(req: Request) {
     }
   }
 
-  // No product → plain scene. If brand logos are attached, infuse them (colors + tasteful logo
-  // placement). Otherwise prefer high-quality Flux; fall back to gpt-image.
-  const brandLogos = await prisma.productImage.findMany({ where: { brandId: campaignId, kind: "logo" }, take: 2 });
-  if (brandLogos.length && integrateEnabled()) {
-    const logoUrls = brandLogos.map((l) => `data:image/png;base64,${l.data}`);
-    const r = await infuseLogoScene(brief || "", brand, aspect, logoUrls);
-    if (r.image) return NextResponse.json({ image: r.image, logo: true });
-  }
+  // No product → plain SCENE. Use Flux (follows compositional prompts like split-screen); the brand
+  // logo is composited deterministically bottom-right in the browser (never AI-smeared). gpt-image fallback.
   if (fluxEnabled()) {
     const f = await generateFlux(brief || "", brand, aspect);
     if (f.image) return NextResponse.json({ image: f.image, flux: true });

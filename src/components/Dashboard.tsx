@@ -1,11 +1,12 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Btn, Card } from "./ui";
 import PostPreview from "./PostPreview";
 import Wizard from "./Wizard";
 import { pillarsFor, aspectFor } from "@/lib/constants";
 import { arcFor } from "@/lib/beats";
+import { isGrowFastBrand } from "@/lib/presets";
 
 // Hard-cap the spoken voiceover script to ~20 seconds (≈230 chars), trimmed at a clean sentence
 // boundary. Ambient Film is exempt (it's meant to run long). This bounds the video length no
@@ -73,6 +74,45 @@ async function compositeProduct(bgUrl: string, productUrl: string, aspect?: stri
   return canvas.toDataURL("image/png");
 }
 
+// Composite the brand logo cleanly into the BOTTOM-RIGHT corner — fitted, legible, with a soft
+// scrim behind it so it reads on any background. Deterministic (not AI), so it's never smeared.
+async function compositeLogo(bgUrl: string, logoUrl: string): Promise<string> {
+  try {
+    const [bg, lg] = await Promise.all([loadImg(bgUrl), loadImg(logoUrl)]);
+    const cw = bg.naturalWidth || 1024, ch = bg.naturalHeight || 1024;
+    const canvas = document.createElement("canvas");
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return bgUrl;
+    ctx.drawImage(bg, 0, 0, cw, ch);
+    // Logo sized to ~16% of width, capped height; padded from the corner.
+    const targetW = cw * 0.16;
+    const scale = targetW / (lg.naturalWidth || targetW);
+    const lw = (lg.naturalWidth || 1) * scale;
+    const lh = (lg.naturalHeight || 1) * scale;
+    const pad = cw * 0.035;
+    const x = cw - lw - pad;
+    const y = ch - lh - pad;
+    // subtle dark scrim rounded behind the logo for legibility on busy scenes
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    const m = lw * 0.18;
+    const rx = x - m, ry = y - m, rw = lw + m * 2, rh = lh + m * 2, r = Math.min(rw, rh) * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(rx + r, ry);
+    ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, r);
+    ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, r);
+    ctx.arcTo(rx, ry + rh, rx, ry, r);
+    ctx.arcTo(rx, ry, rx + rw, ry, r);
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(lg, x, y, lw, lh);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return bgUrl;
+  }
+}
+
 // POST + parse JSON with a hard timeout so a slow/hung server (e.g. a 504) can never freeze a button.
 async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any> {
   const ctrl = new AbortController();
@@ -86,7 +126,7 @@ async function postJSON(url: string, body: any, timeoutMs = 60000): Promise<any>
   }
 }
 
-type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null; beat?: string | null; beatName?: string | null; phase?: string | null; loop?: number | null };
+type Slot = { id: string; date: string; day: string; pillar: string; channel: string; format: string; glyph: string; status: string; city?: string | null; externalUrl?: string | null; beat?: string | null; beatName?: string | null; phase?: string | null; loop?: number | null; caption?: string | null; mediaUrl?: string | null; time?: string | null };
 type Draft = { pillar: string; channel: string; headline: string; caption: string; hashtags: string[]; visualBrief: string; cta: string; script?: string };
 
 export default function Dashboard({ campaign, campaignId, slots: initial }: { campaign: any; campaignId: string; slots: Slot[] }) {
@@ -133,6 +173,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [musicBusy, setMusicBusy] = useState(false);
   const [editBrief, setEditBrief] = useState("");
   const [editScript, setEditScript] = useState("");   // editable voiceover script
+  const [editMusic, setEditMusic] = useState("");      // music direction: genre · mood · energy
   const [noVo, setNoVo] = useState(false);             // explicit "no voiceover" decision
   const [noMusic, setNoMusic] = useState(false);       // explicit "no music" decision
   const [voSeconds, setVoSeconds] = useState(0);       // real voiceover duration (for video length)
@@ -144,6 +185,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const [trailerBusy, setTrailerBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoMsg, setAutoMsg] = useState("");
+  const [preview, setPreview] = useState<Slot | null>(null); // Deliver: enlarged final-review preview
+  const isVideoUrl = (u?: string | null) => !!u && !u.startsWith("data:image") && /(mp4|\.mov|shotstack|\/render)/i.test(u);
   const [social, setSocial] = useState<any>({ platforms: [], autoDeliver: !!campaign.autoDeliver, linkedinConfigured: false });
   const [deliverBusy, setDeliverBusy] = useState(false);
 
@@ -211,9 +254,10 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
   const openSlot = async (s: Slot) => {
     setOpen(s); setDraft(null); setDraftLoading(true); setImage(null); setVo(null); setClips([]); setPicked(null); setVideoUrl(null); setVideoStatus(""); setMusic(null);
     setNoVo(false); setNoMusic(false); setVoSeconds(0); setMusicSeconds(0); setRealClip(null);
-    setSpliceOpen(false); setSpliceFile(null); setSplicePlan(null); setSpliceBusy(""); setSpliceCaps(false); setSpliceKind("video"); setSpliceMedia([]);
+    setSpliceOpen(false); setSpliceFile(null); setSplicePlan(null); setSpliceBusy(""); setSpliceCaps(false); setSpliceKind("video"); setSpliceMedia([]); setEditMusic("");
     if (pillarSource(s.pillar) === "real") loadMedia();
     if (isLongform(s)) { setSpliceOpen(true); setSpliceKind("video"); loadSplice("video"); } // long-form uses your uploaded video
+    if (aspectFor(s.channel, s.format) === "audio") { setSpliceOpen(true); setSpliceKind("audio"); loadSplice("audio"); } // Spotify/Podcast → audio library
     const res = await fetch("/api/generate", { method: "POST", body: JSON.stringify({ campaignId, pillar: s.pillar, channel: s.channel, format: s.format, city: s.city, beat: s.beat, loop: s.loop }) });
     const d = await res.json();
     setDraft(d.draft); setUsedAI(!!d.usedAI); setDraftLoading(false);
@@ -316,7 +360,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     try {
       // Size the score to the voiceover (+buffer) so it's a single track LONGER than the VO.
       const target = voSeconds ? Math.ceil(voSeconds) + 3 : 30;
-      const an = await postJSON("/api/music", { campaignId, mood: campaign.voice, seconds: target }, 90000);
+      const an = await postJSON("/api/music", { campaignId, mood: editMusic.trim() || campaign.voice, seconds: target }, 90000);
       if (an.audioUrl) { setMusic(an.audioUrl); setMusicSeconds(await measureAudio(an.audioUrl)); } else alert(an.error || "Couldn't generate music — try again.");
     } catch (e: any) {
       alert(e?.name === "AbortError" ? "The music timed out — try again." : "Couldn't reach the music service — try again.");
@@ -350,10 +394,13 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
     if (!open || !draft) return { error: "Open a post first." };
     const aspect = aspectFor(open.channel, open.format);
     const briefText = editBrief || draft.visualBrief;
-    // No product → plain scene.
+    // No product → plain scene (Flux). Composite the brand logo cleanly bottom-right.
     if (!productSel) {
       const d = await postJSON("/api/image", { campaignId, brief: briefText, aspect }, 90000);
-      return d.image ? { image: d.image } : { error: d.error || "Couldn't generate the scene — try again." };
+      if (!d.image) return { error: d.error || "Couldn't generate the scene — try again." };
+      const logo = products.find((p) => p.kind === "logo");
+      if (logo) { const composed = await compositeLogo(d.image, `/api/product/${logo.id}`); return { image: composed }; }
+      return { image: d.image };
     }
     // Lifestyle → product integrated into a people/usage scene (Nano Banana, or gpt fallback).
     if (sceneStyle === "lifestyle") {
@@ -441,7 +488,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
       const t = await postJSON("/api/transcribe", { campaignId, fileId: m.id, fileName: m.name, mimeType: m.mimeType }, 120000);
       if (t.error) { setSpliceBusy(""); alert(t.error); return; }
       setSpliceBusy("Finding the best moment…");
-      const p = await postJSON("/api/splice/plan", { campaignId, fileId: m.id, format: channelFormatId(), pillar: open?.pillar, beat: open?.beat }, 60000);
+      const p = await postJSON("/api/splice/plan", { campaignId, fileId: m.id, format: spliceKind === "audio" ? "audio" : channelFormatId(), pillar: open?.pillar, beat: open?.beat }, 60000);
       if (p.error) { setSpliceBusy(""); alert(p.error); return; }
       setSplicePlan({ ...p.plan, total: p.total, transcript: p.transcript });
       if (p.plan?.caption) setDraft((d) => (d ? { ...d, caption: p.plan.caption } : d));
@@ -587,17 +634,17 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
           <Card className="p-5"><div className="text-zinc-400 text-xs">Approved</div><div className="text-3xl font-black">{slots.filter((s) => s.status === "approved").length}<span className="text-zinc-600 text-lg">/{slots.length}</span></div></Card>
         </div>
         <div className="flex gap-2 mb-4 flex-wrap">
-          {["offer", "brain", "profile", "story", "pillars", "cadence", "trailer", "calendar", "deliver"].map((t) => (
+          {["offer", "brain", "profile", "story", "pillars", "trailer", "calendar", "deliver"].map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 rounded-lg text-sm font-semibold capitalize ${tab === t ? "bg-accent text-zinc-950" : "bg-zinc-900 text-zinc-300 border border-zinc-800"}`}>{t}</button>
           ))}
         </div>
 
-        {["offer", "brain", "profile", "story", "pillars", "cadence"].includes(tab) && (
+        {["offer", "brain", "profile", "story", "pillars"].includes(tab) && (
           <Wizard
             campaignId={campaignId}
             embedded
-            stepProp={["offer", "brain", "profile", "story", "pillars", "cadence"].indexOf(tab)}
-            onStep={(i) => setTab(["offer", "brain", "profile", "story", "pillars", "cadence"][i])}
+            stepProp={["offer", "brain", "profile", "story", "pillars"].indexOf(tab)}
+            onStep={(i) => setTab(["offer", "brain", "profile", "story", "pillars"][i])}
             onExit={() => setTab("calendar")}
           />
         )}
@@ -613,6 +660,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <Btn kind="ghost" className="text-xs px-3 py-1.5" onClick={() => setTab("deliver")}>Auto-deliver ▶</Btn>
                 </div>
               </div>
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-zinc-500 bg-zinc-900/60 rounded-lg px-2.5 py-1.5">
+                <button onClick={() => setTab("pillars")} className="text-zinc-300 hover:text-accent underline">Pillars</button>
+                <span className="text-zinc-600">set formats + channels</span>
+                <span className="text-zinc-600">→</span>
+                <span className="text-accent font-semibold">Calendar</span>
+                <span className="text-zinc-600">draft &amp; approve (queued → drafted → approved → ready)</span>
+                <span className="text-zinc-600">→</span>
+                <button onClick={() => setTab("deliver")} className="text-zinc-300 hover:text-accent underline">Deliver</button>
+                <span className="text-zinc-600">send</span>
+              </div>
               <div className="flex items-center gap-2 flex-wrap text-xs">
                 <span className="text-zinc-500">From</span>
                 <input type="date" value={calFrom} onChange={(e) => setCalFrom(e.target.value)} className="bg-zinc-800 rounded-lg px-2 py-1 text-zinc-200" />
@@ -627,11 +684,22 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto divide-y divide-zinc-800">
-              {slots.map((e) => (
-                <div key={e.id} className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
+              {slots.map((e, i) => {
+              const prev = slots[i - 1];
+              const newDay = i === 0 || (prev && prev.date !== e.date);
+              const dayCount = newDay ? slots.filter((s) => s.date === e.date).length : 0;
+              return (
+              <Fragment key={e.id}>
+                {newDay && (
+                  <div className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur px-2 py-1.5 flex items-center justify-between text-[11px] font-semibold">
+                    <span className="text-zinc-300">{e.day} · {e.date.slice(5)}{e.time ? <span className="text-zinc-500 font-normal"> · {e.time}</span> : null}</span>
+                    <span className="text-accent">{dayCount} post{dayCount === 1 ? "" : "s"}</span>
+                  </div>
+                )}
+                <div className="w-full flex items-center gap-3 py-2.5 px-2 text-sm hover:bg-zinc-800/50 rounded-lg transition">
                   <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSel(e.id)} className="shrink-0" />
                   <button onClick={() => openSlot(e)} className="flex-1 flex items-center gap-3 text-left min-w-0">
-                    <div className="w-20 text-zinc-500 shrink-0">{e.day} {e.date.slice(5)}</div>
+                    <div className="w-24 text-zinc-500 shrink-0"><div>{e.day} {e.date.slice(5)}</div>{e.time && <div className="text-[10px] text-zinc-600">{e.time}</div>}</div>
                     <div className="w-8 text-center text-accent shrink-0">{e.glyph}</div>
                     <div className="w-28 text-zinc-300 truncate shrink-0">{e.channel}{e.format ? <span className="text-zinc-500"> · {e.format}</span> : null}</div>
                     <div className="flex-1 text-zinc-100 truncate">{e.city ? e.pillar.replace(/\[city\]/i, e.city) : e.pillar}</div>
@@ -640,7 +708,9 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                   <span className={`text-xs rounded-full px-2 py-0.5 shrink-0 ${statusStyle(e.status)}`}>{e.status}</span>
                   <button onClick={(ev) => delPost(e.id, ev)} className="text-zinc-600 hover:text-red-400 px-1.5 shrink-0" title="Delete post">✕</button>
                 </div>
-              ))}
+              </Fragment>
+              );
+              })}
               {slots.length === 0 && <div className="text-zinc-500 text-sm p-6 text-center">No schedule yet — hit Rebuild.</div>}
             </div>
           </Card>
@@ -680,51 +750,76 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
         )}
         {tab === "deliver" && (
           <div className="space-y-4">
-            <Card className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold">Auto-deliver</div>
-                  <div className="text-zinc-400 text-sm">When on, approved posts publish automatically at their scheduled time (checked hourly).</div>
-                </div>
-                <button onClick={() => toggleAuto(!social.autoDeliver)} className={`w-12 h-7 rounded-full relative shrink-0 ${social.autoDeliver ? "bg-accent" : "bg-zinc-700"}`}>
-                  <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-zinc-950 transition-all ${social.autoDeliver ? "left-[22px]" : "left-0.5"}`} />
-                </button>
-              </div>
-              <div className="mt-4 flex items-center gap-2">
-                <Btn className="text-sm" disabled={deliverBusy} onClick={deliverNow}>{deliverBusy ? "Delivering…" : "Deliver due posts now ▶"}</Btn>
-                <span className="text-xs text-zinc-500">Publishes approved posts whose time has passed.</span>
-              </div>
-            </Card>
-
-            <Card className="p-5">
-              <div className="font-bold mb-1">Connected accounts</div>
-              <div className="text-zinc-400 text-sm mb-4">Uzi publishes to the platforms this campaign posts to. Connect each account once.</div>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {(social.platforms || []).map((p: any) => (
-                  <div key={p.platform} className={`p-4 rounded-xl border ${p.connected ? "border-lime-400/50 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold capitalize">{p.platform}</div>
-                      {p.connected
-                        ? <span className="text-[10px] bg-emerald-400/20 text-emerald-300 rounded-full px-2 py-0.5">Connected</span>
-                        : p.ready
-                          ? <span className="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">Not connected</span>
-                          : <span className="text-[10px] bg-amber-400/20 text-amber-300 rounded-full px-2 py-0.5">Pending API approval</span>}
+            {(() => {
+              const ready = slots.filter((s) => ["approved", "ready", "published"].includes(s.status));
+              const platforms = social.platforms || [];
+              const forChan = (name: string) => ready.filter((s) => (s.channel || "").toLowerCase() === String(name).toLowerCase()).sort((a, b) => a.date.localeCompare(b.date));
+              return (<>
+                <Card className="p-5">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <div className="font-bold">Deliver · last review before send <span className="text-accent">({ready.filter((s) => s.status !== "published").length} ready)</span></div>
+                      <div className="text-zinc-400 text-sm">Each account's posts below, in date order. Click any thumbnail to preview full-size, then send.</div>
                     </div>
-                    {p.connected && p.displayName && <div className="text-xs text-zinc-500 mt-1">{p.displayName}</div>}
-                    {!p.connected && p.platform === "linkedin" && social.linkedinConfigured && (
-                      <button onClick={connectLinkedIn} className="mt-3 bg-accent text-zinc-950 font-semibold text-xs rounded-lg px-3 py-1.5">Connect LinkedIn</button>
-                    )}
-                    {!p.connected && p.platform === "linkedin" && !social.linkedinConfigured && (
-                      <div className="text-xs text-zinc-500 mt-2">Add LinkedIn API keys in Vercel to enable.</div>
-                    )}
-                    {!p.connected && p.platform !== "linkedin" && (
-                      <div className="text-xs text-zinc-500 mt-2">Publishing for {p.platform} unlocks once its API app is approved. Posts stay “ready” to publish manually until then.</div>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <Btn className="text-sm" disabled={deliverBusy} onClick={deliverNow}>{deliverBusy ? "Sending…" : "Send due now ▶"}</Btn>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400">Auto
+                        <button onClick={() => toggleAuto(!social.autoDeliver)} className={`w-11 h-6 rounded-full relative shrink-0 ${social.autoDeliver ? "bg-accent" : "bg-zinc-700"}`}>
+                          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${social.autoDeliver ? "left-[22px]" : "left-0.5"}`} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                ))}
-                {(social.platforms || []).length === 0 && <div className="text-zinc-500 text-sm">Set channels on your pillars (Edit setup → Pillars) to see platforms here.</div>}
-              </div>
-            </Card>
+                </Card>
+
+                <Card className="p-5">
+                  <div className="font-bold mb-1">Connected accounts</div>
+                  <div className="text-zinc-400 text-sm mb-4">Each platform's queued posts, in date order. Connect each account once.</div>
+                  <div className="space-y-4">
+                    {platforms.map((p: any) => {
+                      const posts = forChan(p.platform);
+                      return (
+                        <div key={p.platform} className={`rounded-xl border ${p.connected ? "border-lime-400/40" : "border-zinc-800"} bg-zinc-800/30 p-3`}>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold capitalize">{p.platform}</span>
+                              <span className="text-[11px] text-zinc-500">{posts.length} post{posts.length === 1 ? "" : "s"}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {p.connected
+                                ? <span className="text-[10px] bg-emerald-400/20 text-emerald-300 rounded-full px-2 py-0.5">Connected</span>
+                                : p.ready
+                                  ? <span className="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">Not connected</span>
+                                  : <span className="text-[10px] bg-amber-400/20 text-amber-300 rounded-full px-2 py-0.5">Pending API approval</span>}
+                              {!p.connected && p.platform === "linkedin" && social.linkedinConfigured && (
+                                <button onClick={connectLinkedIn} className="bg-accent text-zinc-950 font-semibold text-[11px] rounded-lg px-2.5 py-1">Connect</button>
+                              )}
+                            </div>
+                          </div>
+                          {!p.connected && p.platform === "linkedin" && !social.linkedinConfigured && <div className="text-xs text-zinc-500 mt-1">Add LinkedIn API keys in Vercel to enable.</div>}
+                          {!p.connected && p.platform !== "linkedin" && <div className="text-xs text-zinc-500 mt-1">Unlocks once its API app is approved — posts stay “ready” to send manually.</div>}
+                          {posts.length > 0 && (
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-3">
+                              {posts.map((e) => (
+                                <button key={e.id} onClick={() => setPreview(e)} className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900 aspect-square group">
+                                  {e.mediaUrl
+                                    ? (isVideoUrl(e.mediaUrl) ? <video src={e.mediaUrl} className="w-full h-full object-cover" muted /> : <img src={e.mediaUrl} className="w-full h-full object-cover" alt="" />)
+                                    : <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] px-1 text-center">{e.city ? e.pillar.replace(/\[city\]/i, e.city) : e.pillar}</div>}
+                                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1 text-left"><div className="text-[9px] text-white truncate">{e.date.slice(5)}</div></div>
+                                  {e.status === "published" && <span className="absolute top-0.5 right-0.5 text-[8px] bg-emerald-500/80 text-white rounded px-1">live</span>}
+                                  <div className="absolute inset-0 group-hover:bg-black/20 transition" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {platforms.length === 0 && <div className="text-zinc-500 text-sm">Set channels on your pillars (Pillars tab) to see platforms here.</div>}
+                  </div>
+                </Card>
+              </>);
+            })()}
 
             <div className="text-xs text-zinc-600">LinkedIn publishes today. Instagram, Facebook, YouTube, TikTok and X each need their own API app review before auto-posting — until then those posts are marked <span className="text-amber-300">ready</span> so you can post them manually in one click.</div>
           </div>
@@ -747,7 +842,7 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
             {draft && (
               <div className="mt-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-zinc-500">Preview · how it'll post</div>
+                  <div className="text-xs text-zinc-500">Preview · how it'll post <span className="text-zinc-600">· 🔒 Voice: {isGrowFastBrand(campaign.name) ? "GrowFast (Tyson)" : (campaign.name || "brand")}</span></div>
                   <span className={`text-[10px] rounded-full px-2 py-0.5 ${usedAI ? "bg-lime-400/20 text-accent" : "bg-zinc-800 text-zinc-400"}`}>{usedAI ? "✨ AI copy" : "Template copy"}</span>
                 </div>
                 <PostPreview channel={open.channel || "Instagram"} format={open.format} aspect={aspectFor(open.channel, open.format)} draft={draft} handle={campaign.handle} imageUrl={image || undefined} productUrl={productUrl} />
@@ -779,8 +874,8 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     </div>
                   </div>
                 )}
-                {/* 1 · Visual — long-form uses uploaded video; else real footage or AI generation */}
-                {isLongform(open) ? (
+                {/* 1 · Visual — hidden for audio-only posts (Spotify/Podcast use the audio library below) */}
+                {aspectFor(open.channel, open.format) !== "audio" && (isLongform(open) ? (
                   <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-3">
                     <div className="text-sm font-semibold text-zinc-200">🎥 Long-form uses your uploaded video</div>
                     <div className="text-xs text-zinc-500 mt-1">No AI generation — pick your webcam / screen-share clip from the Video library below and trim it. It exports as the YouTube long-form (and a Spotify audio track).</div>
@@ -812,14 +907,16 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                     <textarea value={editBrief} onChange={(e) => setEditBrief(e.target.value)} rows={2} className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 mb-2" />
                     <Btn kind="ghost" className="w-full text-sm" disabled={imgBusy} onClick={genImage}>{imgBusy ? "Generating visual…" : image ? "Regenerate visual ✨" : "Generate visual ✨"}</Btn>
                   </div>
-                )}
+                ))}
 
-                {/* Splice from the Video library — auto-pick a moment, adjust, trim to this channel */}
-                {!["text", "audio"].includes(aspectFor(open.channel, open.format)) && (
+                {/* Splice from your libraries. Audio-aspect posts (Spotify/Podcast) show only the audio picker. */}
+                {aspectFor(open.channel, open.format) !== "text" && (
                   <div className="border-t border-zinc-800 pt-3">
                     <div className="flex items-center gap-3">
-                      <button onClick={() => openSplice("video")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "video" ? "text-lime-300" : "text-zinc-400"}`}>✂️ Splice from video library</button>
-                      <button onClick={() => openSplice("audio")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "audio" ? "text-lime-300" : "text-zinc-400"}`}>🎧 Audiogram from audio library</button>
+                      {aspectFor(open.channel, open.format) !== "audio" && (
+                        <button onClick={() => openSplice("video")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "video" ? "text-lime-300" : "text-zinc-400"}`}>✂️ Splice from video library</button>
+                      )}
+                      <button onClick={() => openSplice("audio")} className={`text-xs hover:text-zinc-200 ${spliceOpen && spliceKind === "audio" ? "text-lime-300" : "text-zinc-400"}`}>🎧 {aspectFor(open.channel, open.format) === "audio" ? "Pick from audio library" : "Audiogram from audio library"}</button>
                     </div>
                     {spliceOpen && (
                       <div className="mt-2 space-y-2">
@@ -910,9 +1007,12 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                       <button className="text-accent text-xs" onClick={() => setNoMusic(false)}>Add music</button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
-                      <Btn kind="ghost" className="text-sm" onClick={() => { setNoMusic(true); setMusic(null); }}>No music</Btn>
+                    <div className="space-y-2">
+                      <input value={editMusic} onChange={(e) => setEditMusic(e.target.value)} placeholder="Genre · mood · energy — e.g. 'uplifting corporate synth, medium energy, hopeful'" className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100" />
+                      <div className="flex items-center gap-2">
+                        <Btn kind="ghost" className="flex-1 text-sm" disabled={musicBusy} onClick={genMusic}>{musicBusy ? "Scoring…" : music ? "Re-score 🎵" : "Generate music 🎵"}</Btn>
+                        <Btn kind="ghost" className="text-sm" onClick={() => { setNoMusic(true); setMusic(null); }}>No music</Btn>
+                      </div>
                     </div>
                   )}
                   {music && !noMusic && <audio controls src={music} className="w-full mt-2" />}
@@ -976,6 +1076,34 @@ export default function Dashboard({ campaign, campaignId, slots: initial }: { ca
                 <div className="text-xs text-zinc-600">{image ? "Your real product is rendered into the scene. Edit the brief above and regenerate to change it, or pick a different product." : "Pick a product, then “Generate visual” renders a scene built around your real product (needs the OpenAI image key)."}</div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Deliver — enlarged final-review preview */}
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <div className="bg-zinc-950 rounded-2xl border border-zinc-800 w-full max-w-md max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+              <div className="text-sm font-semibold">{preview.glyph} {preview.channel}{preview.format ? <span className="text-zinc-500"> · {preview.format}</span> : null}</div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] rounded-full px-2 py-0.5 ${statusStyle(preview.status)}`}>{preview.status}</span>
+                <button onClick={() => setPreview(null)} className="text-zinc-500 hover:text-zinc-200">✕</button>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
+              {preview.mediaUrl
+                ? (isVideoUrl(preview.mediaUrl)
+                    ? <video src={preview.mediaUrl} controls className="w-full rounded-xl bg-black" />
+                    : <PostPreview channel={preview.channel || "Instagram"} format={preview.format} aspect={aspectFor(preview.channel, preview.format)} draft={{ pillar: preview.pillar, channel: preview.channel, headline: "", caption: preview.caption || "", hashtags: [], visualBrief: "", cta: "" }} handle={campaign.handle} imageUrl={preview.mediaUrl || undefined} />)
+                : <div className="text-sm text-zinc-400">No media on this post yet.</div>}
+              {preview.mediaUrl && isVideoUrl(preview.mediaUrl) && preview.caption && <div className="text-sm text-zinc-200 whitespace-pre-wrap">{preview.caption}</div>}
+              {preview.externalUrl && <a href={preview.externalUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-300 underline">view live post ↗</a>}
+              <div className="flex gap-2 pt-1">
+                <Btn kind="ghost" className="flex-1" onClick={() => { const s = preview; setPreview(null); if (s) openSlot(s); }}>Edit</Btn>
+                <Btn className="flex-1" disabled={deliverBusy} onClick={deliverNow}>{deliverBusy ? "Sending…" : "Send now ▶"}</Btn>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -6,7 +6,7 @@ import { pillarsFor, CHANNELS, CONTENT_FORMATS, CAMPAIGN_TYPES, channelsForForma
 import { HERO_FRAME_FIELDS } from "@/lib/heroframe";
 import { GROWFAST_HERO_FRAME, GROWFAST_PROFILE, isGrowFastBrand, BRAIN_LOCK_WARNING } from "@/lib/presets";
 
-const STEPS = ["Offer", "Brain", "Profile", "Story", "Pillars", "Cadence"];
+const STEPS = ["Offer", "Brain", "Profile", "Story", "Pillars"];
 
 // A single typed content-library folder picker (Documents / Audio / Video). Connects its own
 // Drive folder via the `slot` param so each library is a distinct, visible source.
@@ -58,6 +58,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [social, setSocial] = useState<any>({ platforms: [] });
   const [products, setProducts] = useState<any[]>([]);
   const [prodBusy, setProdBusy] = useState(false);
   const [storyBusy, setStoryBusy] = useState(false);
@@ -91,6 +92,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
       setLoaded(true);
     });
     fetch(`/api/google/status?campaignId=${campaignId}`).then((x) => x.json()).then(setDrive).catch(() => {});
+    fetch(`/api/social/status?campaignId=${campaignId}`).then((x) => x.json()).then(setSocial).catch(() => {});
     fetch(`/api/products?campaignId=${campaignId}`).then((x) => x.json()).then((d) => setProducts(d.products || [])).catch(() => {});
     // Returning from Google OAuth lands here with ?drive=... — jump to the Inputs step.
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("drive")) setStep(1);
@@ -150,6 +152,17 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
     } catch { alert("Upload failed — try again."); } finally { setUploadBusy(false); }
   };
 
+  // Re-Sync all inputs: reset entered content to empty and re-pull the brain from connected sources.
+  const resyncAll = async () => {
+    if (typeof window !== "undefined" && !window.confirm("Reset all entered content (Profile, Story, brain) and re-sync everything from your connected Drive + libraries?")) return;
+    setSyncBusy(true); setSyncMsg("Re-syncing from your inputs…");
+    try {
+      const d = await (await fetch(`/api/ingest`, { method: "POST", body: JSON.stringify({ campaignId, resync: true }) })).json();
+      if (d.ok) { setSyncMsg("✓ Reset & re-synced — reloading…"); setTimeout(() => window.location.reload(), 700); }
+      else setSyncMsg(d.error || "Couldn't re-sync — try again.");
+    } catch { setSyncMsg("Couldn't re-sync — try again."); } finally { setSyncBusy(false); }
+  };
+
   const syncLibraries = async () => {
     setSyncBusy(true); setSyncMsg("");
     try {
@@ -157,6 +170,16 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
       if (d.ok) setSyncMsg(`✓ Brain updated from ${d.docs} document${d.docs === 1 ? "" : "s"}${d.transcripts ? ` + ${d.transcripts} transcript${d.transcripts === 1 ? "" : "s"}` : ""}.`);
       else setSyncMsg(d.error || "Couldn't sync — try again.");
     } catch { setSyncMsg("Couldn't sync — try again."); } finally { setSyncBusy(false); }
+  };
+
+  // Clear the editable answers on a page (keeps the brand name).
+  const clearProfile = () => {
+    if (typeof window !== "undefined" && !window.confirm("Clear the profile fields on this page?")) return;
+    u({ tagline: "", region: "", voice: "", inputs: { ...cfg.inputs, brandKit: { ...(cfg.inputs?.brandKit || {}), product: "", donts: "", phrases: "" } } });
+  };
+  const clearStory = () => {
+    if (typeof window !== "undefined" && !window.confirm("Clear all Story fields on this page?")) return;
+    u({ inputs: { ...cfg.inputs, story: {} } });
   };
 
   const u = (patch: any) => setCfg({ ...cfg, ...patch });
@@ -263,7 +286,10 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
         <Card className="p-7">
           <h3 className="text-xl font-bold">Brand profile</h3>
           <p className="text-zinc-400 text-sm mt-1">The seam — everything Uzi generates reads from this. Let the AI draft it from your connected folder, then review.</p>
-          <Btn className="w-full mt-3" disabled={profileBusy} onClick={genProfile}>{profileBusy ? "Drafting from your brand…" : "Draft profile from my brand ✨"}</Btn>
+          <div className="flex gap-2 mt-3">
+            <Btn className="flex-1" disabled={profileBusy} onClick={genProfile}>{profileBusy ? "Drafting from your brand…" : "Draft profile from my brand ✨"}</Btn>
+            <Btn kind="ghost" onClick={clearProfile}>Clear</Btn>
+          </div>
           <div className="text-[11px] text-zinc-600 mt-1 mb-3">Pulls from your connected Drive folder (Inputs step). Fills blanks; keeps anything you've written.</div>
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
             <input placeholder="Brand name" className="bg-zinc-800 rounded-xl px-4 py-3 text-sm" value={cfg.name || ""} onChange={(e) => u({ name: e.target.value })} />
@@ -291,9 +317,17 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
 
       {step === 1 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Connect Your Brain</h3>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="text-xl font-bold">Connect Your Brain</h3>
+            <Btn kind="ghost" className="text-xs" disabled={syncBusy} onClick={resyncAll}>{syncBusy ? "Re-syncing…" : "↻ Re-Sync all inputs"}</Btn>
+          </div>
           <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Your source material — copywriting, frameworks, cornerstone content, product docs." : "Your cornerstone assets — one weekly input fuels everything."}</p>
-          <div className="grid sm:grid-cols-2 gap-4 mt-5">
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-5">
+            {/* LEFT — Inputs (everything that feeds the brain) */}
+            <div className="xl:col-span-7 space-y-5">
+              <div className="text-xs font-semibold text-accent uppercase tracking-wide">Inputs</div>
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className={`p-5 rounded-xl border ${drive.folderId ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
               <div className="font-bold flex items-center gap-2">Google Drive {drive.connected && <span className="text-[10px] uppercase tracking-wide bg-zinc-800 text-zinc-300 rounded-full px-2 py-0.5">linked</span>}</div>
               {!drive.configured && (
@@ -402,6 +436,32 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
               </label>
             </div>
           </div>
+            </div>
+
+            {/* CENTER — the brain */}
+            <div className="hidden xl:flex xl:col-span-2 items-center justify-center">
+              <div className="w-20 h-20 rounded-full bg-lime-400/10 border border-lime-400/40 flex items-center justify-center text-4xl shadow-[0_0_40px_-10px_rgba(163,230,53,0.6)]">🧠</div>
+            </div>
+
+            {/* RIGHT — Outputs (channels connected for publishing) */}
+            <div className="xl:col-span-3">
+              <div className="text-xs font-semibold text-accent uppercase tracking-wide mb-1">Outputs</div>
+              <div className="text-[11px] text-zinc-500 mb-3">Channels connected for publishing. <span className="text-lime-400">Green</span> = ready, <span className="text-red-400">red</span> = connect it.</div>
+              <div className="space-y-1.5">
+                {CHANNELS.map((ch) => {
+                  const p = (social.platforms || []).find((x: any) => x.platform === ch.id);
+                  const connected = !!p?.connected;
+                  return (
+                    <div key={ch.id} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${connected ? "border-lime-400/50 bg-lime-400/5" : "border-red-500/40 bg-red-500/5"}`}>
+                      <span className="text-sm text-zinc-200">{ch.glyph} {ch.name}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-lime-400" : "bg-red-500"}`} title={connected ? "Connected" : "Not connected"} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-zinc-600 mt-3">Connect accounts in the Deliver tab.</div>
+            </div>
+          </div>
         </Card>
       )}
 
@@ -414,7 +474,10 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
           <h3 className="text-xl font-bold">Your campaign Story</h3>
           <p className="text-zinc-400 text-sm mt-1">This is the Hero Frame your whole calendar tells over time — the one story every post advances. The AI drafts it from your brand kit + connected Drive folder; you review and edit. It feeds every post.</p>
 
-          <Btn className="w-full mt-4" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft my story with AI ✨"}</Btn>
+          <div className="flex gap-2 mt-4">
+            <Btn className="flex-1" disabled={storyBusy} onClick={genStory}>{storyBusy ? "Drafting from your brand…" : "Draft my story with AI ✨"}</Btn>
+            <Btn kind="ghost" onClick={clearStory}>Clear</Btn>
+          </div>
           <div className="text-[11px] text-zinc-600 mt-1">Pulls from your brand kit + connected Drive folder (your "master brain"). Review and edit anything. ★ = the 5 load-bearing inputs.</div>
 
           <div className="mt-4 space-y-2">
@@ -444,8 +507,20 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
 
       {step === 4 && (
         <Card className="p-7">
-          <h3 className="text-xl font-bold">Set your pillars</h3>
-          <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars, set each one's format + which channels it posts to, and how often.</p>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-xl font-bold">Set your pillars</h3>
+              <p className="text-zinc-400 text-sm mt-1">{isDigital ? "Digital map" : "Physical map"} — toggle pillars and set each one's format + channels.</p>
+            </div>
+            <div className="text-right shrink-0">
+              <label className="text-[11px] text-zinc-400 block mb-1">Cadence — how often the machine fires</label>
+              <select value={cfg.cadence} onChange={(e) => u({ cadence: e.target.value })} className="bg-zinc-800 rounded-lg text-sm px-3 py-2">
+                <option value="chill">Chill · 3× / week</option>
+                <option value="steady">Steady · daily</option>
+                <option value="machinegun">Machine gun · multi-daily</option>
+              </select>
+            </div>
+          </div>
 
           {/* OMNI MODE — one master switch: every pillar → all channels, format auto-tailored per channel. */}
           <div className="mt-5 flex flex-col items-center text-center gap-2 rounded-2xl border border-lime-400/40 bg-lime-400/5 p-4">
@@ -485,9 +560,6 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
                   <div className="flex items-center gap-4 p-3">
                     <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
                     <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>
-                    <select value={freq} onChange={(e) => setP({ freq: e.target.value })} className="bg-zinc-800 rounded-lg text-xs px-2 py-1.5">
-                      <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">2× / week</option><option value="monthly">Monthly</option>
-                    </select>
                   </div>
                   {on && cfg.omni && (
                     <div className="px-3 pb-3">
@@ -539,20 +611,6 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
                 </div>
               );
             })}
-          </div>
-        </Card>
-      )}
-
-      {step === 5 && (
-        <Card className="p-7">
-          <h3 className="text-xl font-bold">Cadence</h3>
-          <p className="text-zinc-400 text-sm mt-1">How aggressively should the machine fire?</p>
-          <div className="grid sm:grid-cols-3 gap-3 mt-5">
-            {[["chill", "Chill", "3× / week"], ["steady", "Steady", "Daily"], ["machinegun", "Machine gun", "Multi-daily"]].map(([id, t, d]) => (
-              <button key={id} onClick={() => u({ cadence: id })} className={`p-5 rounded-xl border text-left ${cfg.cadence === id ? "border-lime-400 bg-lime-400/5" : "border-zinc-800 bg-zinc-800/40"}`}>
-                <div className="font-bold">{t}</div><div className="text-zinc-400 text-sm">{d}</div>
-              </button>
-            ))}
           </div>
         </Card>
       )}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
-import { refreshAccessToken, listFiles, fetchDriveFile, readDriveFileText } from "@/lib/google";
+import { refreshAccessToken, listFiles, fetchDriveFile, readDriveFileText, ingestFolder } from "@/lib/google";
 import { extractText } from "@/lib/extract";
 import { synthesizeBrain } from "@/lib/synth";
 
@@ -13,13 +13,19 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const uid = await getUserId();
   if (!uid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { campaignId } = await req.json();
+  const { campaignId, resync } = await req.json();
   const c = await prisma.brand.findUnique({ where: { id: campaignId } });
   if (!c || c.userId !== uid) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const inputs = (c.inputs as any) || {};
   const user = await prisma.user.findUnique({ where: { id: uid } });
   const token = user?.googleRefreshToken ? await refreshAccessToken(user.googleRefreshToken) : null;
+
+  // Re-read the connected Drive "master brain" folder fresh (so a re-sync truly re-pulls from source).
+  let brainText = "";
+  if (token && inputs.driveFolderId) {
+    try { brainText = (await ingestFolder(token, inputs.driveFolderId)).sourceText || ""; } catch { /* ignore */ }
+  }
 
   let docText = "";
   let docCount = 0;
@@ -46,7 +52,8 @@ export async function POST(req: Request) {
     if (t.text) transText += `\n\n### transcript\n${t.text.slice(0, 2500)}`;
   }
 
-  const base = String(inputs.libraryRaw || inputs.sourceText || "");
+  // On a full re-sync, rebuild ONLY from live connected sources (ignore stale cached text).
+  const base = resync ? brainText : String(brainText || inputs.libraryRaw || inputs.sourceText || "");
   const uploads = String(inputs.uploadText || ""); // drag & drop docs — used alongside Drive
   const raw = [base, uploads, docText, transText].filter(Boolean).join("\n\n").slice(0, 40000);
   if (!raw.trim()) return NextResponse.json({ error: "Nothing to ingest yet — connect Google Drive, drop some docs, or connect a Documents/Audio/Video library first." }, { status: 400 });
@@ -56,7 +63,15 @@ export async function POST(req: Request) {
   inputs.libraryRaw = raw.slice(0, 24000);
   inputs.sourceText = synthesized;
   inputs.ingest = { docs: docCount, transcripts: transcripts.length, chars: synthesized.length, syncedAt: new Date().toISOString() };
-  await prisma.brand.update({ where: { id: campaignId }, data: { inputs } });
 
-  return NextResponse.json({ ok: true, docs: docCount, transcripts: transcripts.length, chars: synthesized.length });
+  // Re-Sync = reset entered content to empty, then re-pull from the connected inputs.
+  const data: any = { inputs };
+  if (resync) {
+    inputs.story = {}; // clear the Hero Frame
+    inputs.brandKit = { language: (inputs.brandKit || {}).language || "en" }; // clear product/donts/phrases
+    data.tagline = ""; data.region = ""; data.voice = ""; // clear profile fields
+  }
+  await prisma.brand.update({ where: { id: campaignId }, data });
+
+  return NextResponse.json({ ok: true, resync: !!resync, docs: docCount, transcripts: transcripts.length, chars: synthesized.length });
 }

@@ -26,11 +26,11 @@ export const ARC_PHYSICAL: Beat[] = [
 
 // DIGITAL — 12 beats, 3 per S.
 export const ARC_DIGITAL: Beat[] = [
-  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "Vision / Brand Film" },
+  { id: "hero", name: "Address the Hero", phase: "Start", job: "Speak to the customer and the future/dream they want.", keys: ["hero", "dream"], pillar: "Brand Vision" },
   { id: "tension", name: "The Tension", phase: "Start", job: "Name the pain / the broken old way in their world.", keys: ["obstacle", "enemy"], pillar: "Problem → Outcome" },
   { id: "cost", name: "The Cost", phase: "Start", job: "What staying stuck actually costs them, in specifics.", keys: ["cost"], pillar: "Problem → Outcome", alts: ["Proof & Results"] },
   { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The contrarian insight / the one thing that changes everything.", keys: ["mechanism"], pillar: "Deal Desk (Authority/POV)" },
-  { id: "optimality", name: "Picture Optimality", phase: "Struggle", job: "What the after-state looks like when success is inevitable.", keys: ["conditions", "dream"], pillar: "Vision / Brand Film", alts: ["Product Showcase"] },
+  { id: "optimality", name: "Picture Optimality", phase: "Struggle", job: "What the after-state looks like when success is inevitable.", keys: ["conditions", "dream"], pillar: "Brand Vision", alts: ["Product Showcase"] },
   { id: "required", name: "What's Required", phase: "Struggle", job: "The structures/inputs that make the outcome predictable.", keys: ["conditions", "inputs"], pillar: "Now Shipping", alts: ["Start Here"] },
   { id: "causality", name: "The Causality", phase: "Success", job: "The cause→effect formula that drives the outcome.", keys: ["causality"], pillar: "Deal Desk (Authority/POV)", alts: ["Problem → Outcome"] },
   { id: "system", name: "System not Luck", phase: "Success", job: "Show it actually working — deploy the machine, not motivation.", keys: ["system"], pillar: "Product in Action" },

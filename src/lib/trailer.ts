@@ -4,6 +4,8 @@
 // cheap first pass; image/video generation + assembly follow in later steps.
 
 import { arcFor } from "./beats";
+import { voiceSystemPrompt } from "./voice";
+import { copySystemPrompt } from "./copywriting";
 
 export type TrailerBeat = {
   id: string; name: string; phase: string; job: string;
@@ -27,6 +29,8 @@ export async function planTrailerBeats(campaignType: string | undefined, brand: 
   if (!key) return fallback();
 
   const system =
+    voiceSystemPrompt({ name: brand.name, voice: brand.voice }) + "\n\n" +
+    copySystemPrompt() + "\n\n" +
     `You are a film director storyboarding a cinematic brand trailer that forms ONE continuous film. ` +
     `For each beat produce (1) a vivid cinematography prompt — camera, lens, lighting, motion, subject, mood — a microcosm of the hero's journey at that beat; and (2) one short line of narration grounded in the brand. ` +
     `The beats must feel continuous: consistent world, tone, and protagonist across shots.`;

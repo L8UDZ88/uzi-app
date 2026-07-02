@@ -100,7 +100,7 @@ function pillarCopy(pillar: string, b: Brand): Copy {
       brief: "CTA graphic: a clear 'start free / book a demo' with the one-step promise.",
       cta: "Start free →", tags: [slug(brand), "starthere", "freetrial", "getstarted"],
     },
-    "Vision / Brand Film": {
+    "Brand Vision": {
       headline: "Why we built this",
       caption: `The future we're building with ${brand}. ${tag}`,
       brief: "Brand/vision film: the mission, the change you're making, hero product moments.",

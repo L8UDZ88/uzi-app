@@ -5,6 +5,8 @@
 
 import { generateDraft, Draft } from "./generate";
 import { HERO_FRAME_FIELDS } from "./heroframe";
+import { voiceSystemPrompt } from "./voice";
+import { copySystemPrompt } from "./copywriting";
 
 // The Story Arc context for a post: which beat it carries + the campaign's Hero Frame brief + loop.
 export type StoryCtx = { beat: { name: string; phase: string; job: string; keys: string[] }; brief: Record<string, string>; loop: number };
@@ -77,6 +79,8 @@ export async function generateDraftAI(pillar: string, channel: string, format: s
   }
 
   const system =
+    voiceSystemPrompt({ name: brand.name, voice: brand.voice, tagline: brand.tagline, phrases: brand.phrases, donts: brand.donts }) + "\n\n" +
+    copySystemPrompt() + "\n\n" +
     `You are the senior social copywriter for ${brand.name || "the brand"}. ` +
     `${languageRule(brand.language)} ` +
     (brand.product ? `THE PRODUCT (every post is about this specific product — never invent other drinks, dishes, or generic items): ${brand.product}. ` : "") +

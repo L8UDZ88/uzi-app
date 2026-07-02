@@ -41,7 +41,7 @@ export const PILLARS_DIGITAL: Pillar[] = [
   { id: 4, name: "Proof & Results", desc: "Customer wins, metrics, testimonials, case studies, logos", src: "Testimonial / data", media: "image", format: "graphic", formats: ["graphic", "photo", "reel", "text"], channels: ["linkedin", "x", "instagram"] },
   { id: 5, name: "Deal Desk (Authority/POV)", desc: "Founder/expert frameworks, contrarian takes, category-owning education", src: "Talking head / POV", media: "video", format: "text", formats: ["text", "reel", "longvideo", "graphic"], channels: ["linkedin", "x"] },
   { id: 6, name: "Start Here", desc: "Trial, demo, pricing, link-in-bio — how to begin, friction removed", src: "CTA graphic", media: "graphic", format: "graphic", formats: ["graphic", "photo", "reel"], channels: ["linkedin", "x", "instagram"] },
-  { id: 7, name: "Vision / Brand Film", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", formats: ["longvideo", "reel"], channels: ["youtube"] },
+  { id: 7, name: "Brand Vision", desc: "The mission and the future you're building; hero brand film", src: "Brand film", media: "video", format: "longvideo", formats: ["longvideo", "reel"], channels: ["youtube"] },
   { id: 8, name: "Product Showcase", desc: "One clean AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["linkedin", "x", "instagram"], source: "ai" },
 ];
 

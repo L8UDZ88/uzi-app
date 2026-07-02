@@ -3,13 +3,16 @@
 // Intelligent auto-pick (Claude) with a deterministic sentence-aware heuristic fallback.
 
 import { TranscriptWord } from "./transcribe";
+import { voiceSystemPrompt } from "./voice";
+import { copySystemPrompt } from "./copywriting";
 
 // Ideal clip length per channel-native format (seconds). 0 = use the whole asset (long-form).
 export function targetSecondsForFormat(format: string): number {
   const f = (format || "").toLowerCase();
   if (f === "story") return 15;
   if (f === "reel" || f === "short" || f === "video") return 25;
-  if (f === "long") return 0; // full length, no trim
+  if (f === "audio") return 60;          // audiogram / podcast clip — bounded so renders stay cheap
+  if (f === "long") return 0;            // full length, no trim (video long-form only)
   if (f === "feed" || f === "post") return 12;
   return 20;
 }
@@ -81,7 +84,8 @@ export async function pickMomentAI(
   if (cur) lines.push(`[${curStart.toFixed(1)}s] ${cur}`);
   const transcriptBlock = lines.join("\n").slice(0, 8000);
 
-  const system = `You are a senior social video editor. From a transcript, select the single most compelling, self-contained ~${targetSec}-second moment for a social clip — hook-first, no mid-thought starts.`;
+  const system = voiceSystemPrompt({ name: ctx.brand }) + "\n\n" + copySystemPrompt() + "\n\n" +
+    `You are a senior social video editor. From a transcript, select the single most compelling, self-contained ~${targetSec}-second moment for a social clip — hook-first, no mid-thought starts.`;
   const user =
     `Transcript with start times:\n${transcriptBlock}\n\n` +
     `Total asset length: ${total.toFixed(1)}s. Target clip: ~${targetSec}s.` +
