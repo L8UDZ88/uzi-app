@@ -66,7 +66,8 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
   const [lines, setLines] = useState<{ id: string; d: string; color: string; pid: number; fid: string }[]>([]);
   const [hover, setHover] = useState<string | null>(null); // "p:3" | "f:hero" | null
   useLayoutEffect(() => {
-    if (step !== 3) return;
+    // Connector wiring is a digital (customer-hero) concept only — physical keeps its plain layout.
+    if (step !== 3 || cfg.campaignType !== "digital") { setLines([]); return; }
     const compute = () => {
       const wrap = wrapRef.current;
       if (!wrap) return;
@@ -500,7 +501,9 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h3 className="text-xl font-bold">Hero Frame — the engine behind every post</h3>
-              <p className="text-zinc-400 text-sm mt-1">Your customer's story (left) directs the 8 pillar outputs (right) — the pillars are its social expression, stage by stage. Lines show what fuels what. ★ = load-bearing.</p>
+              <p className="text-zinc-400 text-sm mt-1">{isDigital
+                ? "Your customer's story (left) directs the 8 pillar outputs (right) — the pillars are its social expression, stage by stage. Lines show what fuels what. ★ = load-bearing."
+                : "Your story (left) fuels the store-visibility pillars (right) — set each pillar's format + channels. ★ = load-bearing."}</p>
             </div>
             <div className="text-right shrink-0">
               <div className="text-[11px] text-zinc-400 mb-1">Schedule</div>
@@ -514,16 +517,18 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
           </div>
 
           <div ref={wrapRef} className="relative mt-5 grid lg:grid-cols-2 gap-x-20 gap-y-3">
-            {/* connector lines — input → pillar it fuels */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none hidden lg:block z-0" style={{ overflow: "visible" }}>
-              {lines.map((l) => (
-                <path key={l.id} d={l.d} fill="none" stroke={l.color} strokeWidth={hover === `p:${l.pid}` || hover === `f:${l.fid}` ? 2.5 : 1.5} style={{ opacity: lineOn(l) ? 0.9 : 0.1, transition: "opacity .15s, stroke-width .15s" }} />
-              ))}
-            </svg>
+            {/* connector lines — input → pillar it fuels (digital only) */}
+            {isDigital && (
+              <svg className="absolute inset-0 w-full h-full pointer-events-none hidden lg:block z-0" style={{ overflow: "visible" }}>
+                {lines.map((l) => (
+                  <path key={l.id} d={l.d} fill="none" stroke={l.color} strokeWidth={hover === `p:${l.pid}` || hover === `f:${l.fid}` ? 2.5 : 1.5} style={{ opacity: lineOn(l) ? 0.9 : 0.1, transition: "opacity .15s, stroke-width .15s" }} />
+                ))}
+              </svg>
+            )}
 
-            {/* LEFT — Customer Frame inputs */}
+            {/* LEFT — Hero Frame inputs */}
             <div className="relative z-10 space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Customer Frame · inputs</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{isDigital ? "Customer Frame · inputs" : "Hero Frame · inputs"}</div>
               {HERO_FRAME_FIELDS.map((f, i) => {
                 const label = f.name === "Hero" ? "Customer" : f.name;
                 const pids = FIELD_PILLARS[f.id] || [];
@@ -534,7 +539,7 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
                     <div className="flex items-center gap-1.5">
                       <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${f.core ? "bg-accent text-zinc-950" : "bg-zinc-700 text-zinc-300"}`}>{i + 1}</span>
                       <label className="text-xs font-semibold text-zinc-200">{label}{f.core ? " ★" : ""}</label>
-                      <span className="ml-auto flex gap-1 shrink-0">{pids.map((pid) => <span key={pid} className="w-2 h-2 rounded-full" style={{ background: PILLAR_COLORS[pid] }} title={`Fuels pillar ${pid}`} />)}</span>
+                      {isDigital && <span className="ml-auto flex gap-1 shrink-0">{pids.map((pid) => <span key={pid} className="w-2 h-2 rounded-full" style={{ background: PILLAR_COLORS[pid] }} title={`Fuels pillar ${pid}`} />)}</span>}
                     </div>
                     <div className="text-[10px] text-zinc-600 mt-0.5 mb-1">{f.hint}</div>
                     <textarea value={s[f.id] || ""} onChange={(e) => setStory({ [f.id]: e.target.value })} rows={2} placeholder="Leave blank for AI to draft" className="w-full bg-zinc-800 rounded-lg px-2.5 py-1.5 text-xs" />
@@ -566,8 +571,8 @@ export default function Wizard({ campaignId, embedded, stepProp, onStep, onExit 
                 return (
                   <div key={p.id} ref={(el) => { pillarRefs.current[p.id] = el; }}
                     onMouseEnter={() => setHover(`p:${p.id}`)} onMouseLeave={() => setHover(null)}
-                    style={{ borderLeftColor: color }}
-                    className={`rounded-xl border border-l-4 ${on ? (hover === `p:${p.id}` ? "border-zinc-500 bg-zinc-800/70" : "border-zinc-700 bg-zinc-800/50") : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
+                    style={isDigital ? { borderLeftColor: color } : undefined}
+                    className={`rounded-xl border ${isDigital ? "border-l-4" : ""} ${on ? (hover === `p:${p.id}` ? "border-zinc-500 bg-zinc-800/70" : "border-zinc-700 bg-zinc-800/50") : "border-zinc-800 bg-zinc-900/40 opacity-60"}`}>
                     <div className="flex items-center gap-4 p-3">
                       <button onClick={() => setP({ on: !on })} className={`w-10 h-6 rounded-full relative shrink-0 ${on ? "bg-accent" : "bg-zinc-700"}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-zinc-950 transition-all ${on ? "left-[18px]" : "left-0.5"}`} /></button>
                       <div className="flex-1 min-w-0"><div className="font-semibold text-sm">{p.id}. {p.name}</div><div className="text-zinc-500 text-xs truncate">{p.desc}</div></div>

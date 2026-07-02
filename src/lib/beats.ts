@@ -18,8 +18,8 @@ export type Beat = {
 export const ARC_PHYSICAL: Beat[] = [
   { id: "ordinary", name: "Ordinary World", phase: "Start", job: "Establish the hero (the customer) and the world/dream they live in.", keys: ["hero", "dream"], pillar: "Ambient film" },
   { id: "tension", name: "The Tension", phase: "Struggle", job: "The dream blocked — the everyday/old way the product elevates; the cost of staying stuck.", keys: ["obstacle", "cost", "enemy"], pillar: "Store → lifestyle bridge" },
-  { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The product as the one thing that changes everything.", keys: ["mechanism"], pillar: "AI Showcase" },
-  { id: "system", name: "The System", phase: "Success", job: "Not luck — it's real and it works; proof it exists.", keys: ["system", "causality", "conditions"], pillar: "Real Photos & Footage" },
+  { id: "hinge", name: "The Hinge", phase: "Struggle", job: "The product as the one thing that changes everything.", keys: ["mechanism"], pillar: "Stock / AI stills" },
+  { id: "system", name: "The System", phase: "Success", job: "Not luck — it's real and it works; proof it exists.", keys: ["system", "causality", "conditions"], pillar: "Spotted at" },
   { id: "momentum", name: "The Momentum", phase: "Success", job: "People finding it and buying it — it's spreading; the scoreboard.", keys: ["multiplier", "scoreboard", "inputs"], pillar: "Spotted at", alts: ["Transaction", "Now in [city]"] },
   { id: "call", name: "The Call", phase: "Service", job: "Choose now — where to get it.", keys: ["call"], pillar: "Locator", alts: ["Now in [city]"] },
 ];

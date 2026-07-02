@@ -29,9 +29,8 @@ export const PILLARS_PHYSICAL: Pillar[] = [
   { id: 3, name: "Now in [city]", desc: "Location announcement on a stock photo of the place", src: "Real / stock", media: "visual", format: "graphic", formats: ["graphic", "photo"], channels: ["instagram", "facebook", "x"] },
   { id: 4, name: "Store → lifestyle bridge", desc: "Attach the payoff to the errand", src: "Real photos", media: "visual", format: "reel", formats: ["reel", "photo", "story"], channels: ["instagram", "facebook", "tiktok"] },
   { id: 5, name: "Locator", desc: '"Where to find us" graphic + live page', src: "Stockists list", media: "graphic", format: "graphic", formats: ["graphic", "photo"], channels: ["instagram", "facebook"] },
-  { id: 6, name: "Real Photos & Footage", desc: "Your real photos/footage from the connected folder — no AI; add copy, VO + score", src: "Your Drive folder", media: "visual", format: "photo", formats: ["photo", "reel", "story"], channels: ["instagram", "facebook"], source: "real" },
-  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music", src: "Midjourney → Kling", media: "video", format: "reel", formats: ["reel", "longvideo"], channels: ["instagram", "facebook", "tiktok", "youtube"] },
-  { id: 8, name: "AI Showcase", desc: "One striking AI hero shot — the product as the main focus in fitting scenery", src: "AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["instagram", "facebook", "x"], source: "ai" },
+  { id: 6, name: "Stock / AI stills", desc: "Scale the world cheaply — a stock/AI scene with the real product composited in (never AI-drawn)", src: "Stock + AI (Nano Banana)", media: "visual", format: "photo", formats: ["photo", "reel"], channels: ["instagram", "facebook", "x"], source: "ai" },
+  { id: 7, name: "Ambient film", desc: "Build the feeling (Corona-style) — video with VO + music, signature ritual", src: "Midjourney → Kling", media: "video", format: "reel", formats: ["reel", "longvideo"], channels: ["instagram", "facebook", "tiktok", "youtube"] },
 ];
 
 // Customer-as-Hero pillar system (Hero Frame). Every pillar is a stage in the CUSTOMER's
